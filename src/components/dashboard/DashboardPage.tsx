@@ -26,7 +26,7 @@ import { formatCHF, formatPercent } from "@/lib/formatters"
 
 export function DashboardPage() {
   const { totalAnnualGross, incomes, loading: incomeLoading, error: incomeError } = useIncome()
-  const { expenses, categories, totalMonthlyExpenses, loading: expenseLoading, error: expenseError } = useExpenses()
+  const { expenses, categories, totalMonthlyExpenses, totalMonthlyBudget, loading: expenseLoading, error: expenseError } = useExpenses()
   const { assets, loading: assetLoading, error: assetError } = useAssets()
   const { family, loading: familyLoading } = useFamily()
 
@@ -49,22 +49,23 @@ export function DashboardPage() {
   const monthlyNetIncome = Math.round((totalAnnualGross - taxResult.total) / 12)
   const netWorth = useMemo(() => calculateNetWorth(assets), [assets])
 
-  // Budget-based monthly expenses (sum of all category budgets); fall back to actual spend
-  const totalMonthlyBudget = categories.reduce((s, c) => s + Number(c.monthlyBudget ?? 0), 0)
+  // Use budget when no actual transactions recorded; otherwise use actual spend
   const effectiveMonthlyExpenses = totalMonthlyBudget > 0 ? totalMonthlyBudget : totalMonthlyExpenses
 
   const monthlySavings = monthlyNetIncome - effectiveMonthlyExpenses
   const savingsRate = monthlyNetIncome > 0 ? monthlySavings / monthlyNetIncome : 0
 
-  // Spending by category (this month)
+  // Spending by category (this month actual, or budget if no transactions)
   const now = new Date()
   const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
+  const hasTransactions = expenses.some((e) => e.date.substring(0, 7) === currentYM)
   const monthlyByCategory = categories
     .map((cat) => {
-      const total = expenses
+      const actual = expenses
         .filter((e) => e.categoryId === cat.id && e.date.substring(0, 7) === currentYM)
         .reduce((s, e) => s + e.amount, 0)
-      return { name: cat.name, value: total, color: cat.color }
+      const value = hasTransactions ? actual : Number(cat.monthlyBudget ?? 0)
+      return { name: cat.name, value, color: cat.color }
     })
     .filter((d) => d.value > 0)
     .sort((a, b) => b.value - a.value)
@@ -248,7 +249,7 @@ export function DashboardPage() {
           {/* Spending by category */}
           <Card>
             <CardHeader>
-              <CardTitle>Spending by Category</CardTitle>
+              <CardTitle>{hasTransactions ? "Spending by Category" : "Budget by Category"}</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-64">
@@ -274,7 +275,7 @@ export function DashboardPage() {
                   </ResponsiveContainer>
                 ) : (
                   <div className="flex h-full items-center justify-center text-muted-foreground">
-                    No expenses this month
+                    No expenses or budgets set
                   </div>
                 )}
               </div>
@@ -284,7 +285,7 @@ export function DashboardPage() {
           {/* Top expenses */}
           <Card>
             <CardHeader>
-              <CardTitle>Top Expenses This Month</CardTitle>
+              <CardTitle>{hasTransactions ? "Top Expenses This Month" : "Top Budget Categories"}</CardTitle>
             </CardHeader>
             <CardContent>
               {topExpenses.length > 0 ? (

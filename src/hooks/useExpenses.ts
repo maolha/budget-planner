@@ -17,15 +17,18 @@ export function useExpenses() {
   const { familyId } = useAuthStore()
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
-  const [loading, setLoading] = useState(true)
+  const [categoriesLoading, setCategoriesLoading] = useState(true)
+  const [expensesLoading, setExpensesLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   // Listen to expense categories
   useEffect(() => {
     if (!familyId) {
       setCategories([])
+      setCategoriesLoading(false)
       return
     }
+    setCategoriesLoading(true)
     const q = query(
       collection(db, "families", familyId, "expenseCategories")
     )
@@ -33,10 +36,12 @@ export function useExpenses() {
       q,
       (snap) => {
         setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ExpenseCategory))
+        setCategoriesLoading(false)
       },
       (err) => {
         console.error("[useExpenses] Categories listener error:", err)
         setError(err.message)
+        setCategoriesLoading(false)
       }
     )
   }, [familyId])
@@ -45,10 +50,10 @@ export function useExpenses() {
   useEffect(() => {
     if (!familyId) {
       setExpenses([])
-      setLoading(false)
+      setExpensesLoading(false)
       return
     }
-    setLoading(true)
+    setExpensesLoading(true)
     setError(null)
     const q = query(
       collection(db, "families", familyId, "expenses")
@@ -57,15 +62,17 @@ export function useExpenses() {
       q,
       (snap) => {
         setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Expense))
-        setLoading(false)
+        setExpensesLoading(false)
       },
       (err) => {
         console.error("[useExpenses] Expenses listener error:", err)
         setError(err.message)
-        setLoading(false)
+        setExpensesLoading(false)
       }
     )
   }, [familyId])
+
+  const loading = categoriesLoading || expensesLoading
 
   const addExpense = useCallback(
     async (data: Omit<Expense, "id" | "createdAt">) => {
@@ -126,6 +133,8 @@ export function useExpenses() {
     return Object.values(totals).reduce((s, v) => s + v, 0)
   })()
 
+  const totalMonthlyBudget = categories.reduce((s, c) => s + Number(c.monthlyBudget ?? 0), 0)
+
   return {
     expenses,
     categories,
@@ -137,5 +146,6 @@ export function useExpenses() {
     updateCategoryBudget,
     getMonthlyTotals,
     totalMonthlyExpenses,
+    totalMonthlyBudget,
   }
 }
