@@ -23,7 +23,7 @@ import { useAssets } from "@/hooks/useAssets"
 import { useFamily } from "@/hooks/useFamily"
 import { calculateTaxSimple } from "@/engine/tax/tax-engine"
 import { calculateNetWorth } from "@/engine/net-worth/net-worth-calculator"
-import { formatCHF, formatPercent } from "@/lib/formatters"
+import { formatCHF, formatPercent, formatAxisCHF } from "@/lib/formatters"
 
 export function DashboardPage() {
   const { totalAnnualGross, incomes, incomeTimeline, loading: incomeLoading, error: incomeError } = useIncome()
@@ -270,12 +270,12 @@ export function DashboardPage() {
                   <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
                   <YAxis
                     yAxisId="balance"
-                    tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                    tickFormatter={formatAxisCHF}
                   />
                   <YAxis
                     yAxisId="flow"
                     orientation="right"
-                    tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                    tickFormatter={formatAxisCHF}
                   />
                   <Tooltip formatter={(v) => formatCHF(Number(v))} />
                   <Legend />

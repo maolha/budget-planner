@@ -19,7 +19,7 @@ import {
 } from "recharts"
 import { calculateTaxSimple } from "@/engine/tax/tax-engine"
 import { MAX_3A_EMPLOYED } from "@/engine/tax/deductions"
-import { formatCHF, formatPercent } from "@/lib/formatters"
+import { formatCHF, formatPercent, formatAxisCHF } from "@/lib/formatters"
 import { useIncome } from "@/hooks/useIncome"
 import { useFamily } from "@/hooks/useFamily"
 
@@ -88,7 +88,7 @@ export function TaxPage() {
       otherDeductions,
     })
     return {
-      income: `${(income / 1000).toFixed(0)}k`,
+      income: formatAxisCHF(income),
       total: Math.round(r.total),
     }
   })

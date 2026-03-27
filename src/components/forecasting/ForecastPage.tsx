@@ -33,7 +33,7 @@ import {
 } from "recharts"
 import { runForecast, compareForcasts } from "@/engine/forecast/forecast-engine"
 import { LIFE_EVENT_TYPES } from "@/lib/constants"
-import { formatCHF } from "@/lib/formatters"
+import { formatCHF, formatAxisCHF } from "@/lib/formatters"
 import { useIncome } from "@/hooks/useIncome"
 import { useExpenses } from "@/hooks/useExpenses"
 import { useAssets } from "@/hooks/useAssets"
@@ -493,7 +493,7 @@ export function ForecastPage() {
               <ComposedChart data={detailedChartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={3} />
-                <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <YAxis tickFormatter={formatAxisCHF} />
                 <Tooltip formatter={(v) => formatCHF(Number(v))} />
                 <Legend />
                 <Bar dataKey="baseIncome" name="Base Income" fill="#22c55e" stackId="income" />
@@ -516,7 +516,7 @@ export function ForecastPage() {
               <LineChart data={chartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                <YAxis tickFormatter={formatAxisCHF} />
                 <Tooltip formatter={(v) => formatCHF(Number(v))} />
                 <Legend />
                 <Line type="monotone" dataKey="Base" stroke={COLORS[0]} strokeWidth={2} dot={false} />

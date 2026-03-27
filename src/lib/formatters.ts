@@ -46,3 +46,18 @@ export function formatCompactNumber(value: number): string {
   }
   return value.toString()
 }
+
+/** Format number for chart Y-axis ticks in Swiss style (e.g. 1'200k, 500k) */
+export function formatAxisCHF(value: number): string {
+  if (Math.abs(value) >= 1_000_000) {
+    const m = value / 1_000_000
+    return `${Number.isInteger(m) ? m : m.toFixed(1)}M`
+  }
+  if (Math.abs(value) >= 1_000) {
+    const k = value / 1_000
+    const formatted = Number.isInteger(k) ? k.toString() : k.toFixed(0)
+    // Apply Swiss apostrophe for values like 1'200k
+    return `${formatted.replace(/\B(?=(\d{3})+(?!\d))/g, "'")}k`
+  }
+  return value.toString()
+}
