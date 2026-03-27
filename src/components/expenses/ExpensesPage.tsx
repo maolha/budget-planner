@@ -272,10 +272,10 @@ export function ExpensesPage() {
           {(() => {
             // Group categories
             const GROUPS = [
-              { label: "Fixkosten", icon: "🏠", keys: ["housing", "health_insurance", "childcare", "taxes", "pension_3a", "bvg"] },
-              { label: "Alltag", icon: "🛒", keys: ["groceries", "household", "personal_expenses", "communication"] },
+              { label: "Fixed Costs", icon: "🏠", keys: ["housing", "health_insurance", "childcare", "taxes", "pension_3a", "bvg"] },
+              { label: "Daily Living", icon: "🛒", keys: ["groceries", "household", "personal_expenses", "communication"] },
               { label: "Lifestyle", icon: "✨", keys: ["restaurants", "holidays", "leisure", "personal_care", "clothing", "gifts"] },
-              { label: "Mobilität & Sonstiges", icon: "🚗", keys: ["transport", "car", "investments", "other"] },
+              { label: "Mobility & Other", icon: "🚗", keys: ["transport", "car", "investments", "other"] },
             ]
 
             const findCatByKey = (key: string) =>

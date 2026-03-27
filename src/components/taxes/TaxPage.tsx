@@ -2,16 +2,8 @@ import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Switch } from "@/components/ui/switch"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Landmark, TrendingDown, Receipt, Percent } from "lucide-react"
+import { Landmark, TrendingDown, Percent, Wallet } from "lucide-react"
 import {
   PieChart,
   Pie,
@@ -26,33 +18,54 @@ import {
   Legend,
 } from "recharts"
 import { calculateTaxSimple } from "@/engine/tax/tax-engine"
-import { ZURICH_MUNICIPAL_MULTIPLIERS } from "@/engine/tax/zurich-cantonal"
 import { MAX_3A_EMPLOYED } from "@/engine/tax/deductions"
 import { formatCHF, formatPercent } from "@/lib/formatters"
+import { useIncome } from "@/hooks/useIncome"
+import { useFamily } from "@/hooks/useFamily"
 
 const PIE_COLORS = ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444"]
-const municipalities = Object.keys(ZURICH_MUNICIPAL_MULTIPLIERS).sort()
 
 export function TaxPage() {
-  const [grossIncome, setGrossIncome] = useState(150000)
-  const [filingStatus, setFilingStatus] = useState<"single" | "married">("married")
-  const [numChildren, setNumChildren] = useState(1)
-  const [municipality, setMunicipality] = useState("Zürich")
-  const [churchTax, setChurchTax] = useState(false)
-  const [pension3a, setPension3a] = useState(7056)
-  const [isDualIncome, setIsDualIncome] = useState(true)
-  const [lowerIncome, setLowerIncome] = useState(80000)
+  const { family } = useFamily()
+  const { incomes, totalAnnualGross } = useIncome()
+
+  const numAdults = family?.adults.length ?? 2
+  const numChildren = family?.children.filter((c) => !c.isPlanned).length ?? 0
+  const derivedFilingStatus = numAdults >= 2 ? "married" as const : "single" as const
+  const derivedMunicipality = family?.municipality ?? "Zürich"
+  const derivedChurchTax = family?.churchTax ?? false
+
+  // Per-member income
+  const incomeByMember: Record<string, number> = {}
+  for (const inc of incomes) {
+    if (!inc.endDate && !inc.isProjection) {
+      incomeByMember[inc.memberId] = (incomeByMember[inc.memberId] ?? 0) + inc.annualGross + (inc.bonus ?? 0)
+    }
+  }
+  const memberIncomes = Object.values(incomeByMember).sort((a, b) => b - a)
+  const isDualIncome = memberIncomes.length >= 2 && memberIncomes[1] > 0
+  const lowerIncomeDefault = memberIncomes[1] ?? 0
+
+  // Editable fields
+  const [grossOverride, setGrossOverride] = useState<number | null>(null)
+  const [pension3a, setPension3a] = useState(MAX_3A_EMPLOYED * numAdults)
+  const [lowerIncomeOverride, setLowerIncomeOverride] = useState<number | null>(null)
+  const [childAllowance, setChildAllowance] = useState(numChildren * 200 * 12) // CHF 200/child/month
+  const [otherDeductions, setOtherDeductions] = useState(0)
+
+  const grossIncome = grossOverride ?? totalAnnualGross
+  const lowerIncome = lowerIncomeOverride ?? lowerIncomeDefault
 
   const result = useMemo(
     () =>
-      calculateTaxSimple(grossIncome, filingStatus, numChildren, {
-        municipality,
-        churchTax,
+      calculateTaxSimple(grossIncome, derivedFilingStatus, numChildren, {
+        municipality: derivedMunicipality,
+        churchTax: derivedChurchTax,
         pension3a,
         isDualIncome,
         lowerIncome,
       }),
-    [grossIncome, filingStatus, numChildren, municipality, churchTax, pension3a, isDualIncome, lowerIncome]
+    [grossIncome, derivedFilingStatus, numChildren, derivedMunicipality, derivedChurchTax, pension3a, isDualIncome, lowerIncome]
   )
 
   const pieData = [
@@ -62,182 +75,205 @@ export function TaxPage() {
     ...(result.church > 0 ? [{ name: "Church", value: result.church }] : []),
   ]
 
-  // Projection: show tax at different income levels
-  const projectionData = [80000, 100000, 120000, 150000, 180000, 200000, 250000].map(
-    (income) => {
-      const r = calculateTaxSimple(income, filingStatus, numChildren, {
-        municipality,
-        churchTax,
-        pension3a,
-        isDualIncome,
-        lowerIncome: Math.min(lowerIncome, income),
-      })
-      return {
-        income: `${income / 1000}k`,
-        total: Math.round(r.total),
-        rate: Math.round(r.effectiveRate * 1000) / 10,
-      }
+  const baseIncome = grossIncome || 150000
+  const projectionData = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0].map((mult) => {
+    const income = Math.round(baseIncome * mult)
+    const r = calculateTaxSimple(income, derivedFilingStatus, numChildren, {
+      municipality: derivedMunicipality,
+      churchTax: derivedChurchTax,
+      pension3a,
+      isDualIncome,
+      lowerIncome: Math.round(lowerIncome * mult),
+    })
+    return {
+      income: `${(income / 1000).toFixed(0)}k`,
+      total: Math.round(r.total),
     }
-  )
+  })
+
+  const memberBreakdown = family?.adults.map((adult) => ({
+    name: adult.name,
+    annualGross: incomeByMember[adult.id] ?? 0,
+  })) ?? []
+
+  // Net income after tax and child allowance
+  const netAfterTax = grossIncome - result.total + childAllowance
 
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">Zurich Tax Calculator</h1>
+        <h1 className="text-2xl font-bold tracking-tight">Tax Calculator</h1>
         <p className="text-muted-foreground">
-          Calculate your federal, cantonal, and municipal taxes based on your income and
-          family status.
+          Based on your income records.
+          {family && ` ${derivedFilingStatus === "married" ? "Married" : "Single"} filing in ${derivedMunicipality}.`}
         </p>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Income + tax summary */}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        {memberBreakdown.map((m) => (
+          <Card key={m.name}>
+            <CardHeader className="flex flex-row items-center justify-between pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">{m.name}</CardTitle>
+              <Wallet className="h-4 w-4 text-green-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-xl font-bold">{formatCHF(m.annualGross)}</div>
+              <p className="text-xs text-muted-foreground">{formatCHF(Math.round(m.annualGross / 12))}/mo</p>
+            </CardContent>
+          </Card>
+        ))}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Tax
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Tax</CardTitle>
             <Landmark className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCHF(result.total)}</div>
-            <p className="text-xs text-muted-foreground">per year</p>
+            <div className="text-xl font-bold">{formatCHF(result.total)}</div>
+            <p className="text-xs text-muted-foreground">{formatCHF(result.monthlyTax)}/mo</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Monthly Tax
-            </CardTitle>
-            <Receipt className="h-4 w-4 text-green-600" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{formatCHF(result.monthlyTax)}</div>
-            <p className="text-xs text-muted-foreground">per month</p>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Effective Rate
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Rate</CardTitle>
             <Percent className="h-4 w-4 text-orange-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">
-              {formatPercent(result.effectiveRate)}
-            </div>
-            <p className="text-xs text-muted-foreground">of gross income</p>
+            <div className="text-xl font-bold">{formatPercent(result.effectiveRate)}</div>
+            <p className="text-xs text-muted-foreground">effective</p>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Deductions
-            </CardTitle>
-            <TrendingDown className="h-4 w-4 text-red-500" />
+            <CardTitle className="text-sm font-medium text-muted-foreground">Net Income</CardTitle>
+            <TrendingDown className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCHF(result.totalDeductions)}</div>
-            <p className="text-xs text-muted-foreground">
-              taxable: {formatCHF(result.taxableIncome)}
-            </p>
+            <div className="text-xl font-bold">{formatCHF(netAfterTax)}</div>
+            <p className="text-xs text-muted-foreground">{formatCHF(Math.round(netAfterTax / 12))}/mo</p>
           </CardContent>
         </Card>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-3">
-        {/* Input form */}
+        {/* Adjustments */}
         <Card className="lg:col-span-1">
           <CardHeader>
-            <CardTitle>Tax Parameters</CardTitle>
+            <CardTitle>Income & Deductions</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>Gross Annual Income (CHF)</Label>
+            <div className="space-y-1">
+              <div className="flex items-center justify-between">
+                <Label className="text-sm">Gross Income</Label>
+                {grossOverride !== null && (
+                  <button
+                    className="text-xs text-primary hover:underline"
+                    onClick={() => setGrossOverride(null)}
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
               <Input
                 type="number"
-                value={grossIncome}
-                onChange={(e) => setGrossIncome(Number(e.target.value))}
+                value={grossOverride ?? totalAnnualGross}
+                onChange={(e) => setGrossOverride(Number(e.target.value))}
+                className="h-8"
               />
+              {grossOverride === null && (
+                <p className="text-xs text-muted-foreground">From your income records</p>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label>Filing Status</Label>
-              <Select
-                value={filingStatus}
-                onValueChange={(v) => setFilingStatus(v as "single" | "married")}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="single">Single</SelectItem>
-                  <SelectItem value="married">Married / Registered Partnership</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Number of Children</Label>
-              <Input
-                type="number"
-                min={0}
-                max={10}
-                value={numChildren}
-                onChange={(e) => setNumChildren(Number(e.target.value))}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Municipality</Label>
-              <Select value={municipality} onValueChange={setMunicipality}>
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {municipalities.map((m) => (
-                    <SelectItem key={m} value={m}>
-                      {m} ({(ZURICH_MUNICIPAL_MULTIPLIERS[m] * 100).toFixed(0)}%)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label>Pillar 3a Contribution (CHF)</Label>
-              <Input
-                type="number"
-                min={0}
-                max={MAX_3A_EMPLOYED}
-                value={pension3a}
-                onChange={(e) => setPension3a(Number(e.target.value))}
-              />
-              <p className="text-xs text-muted-foreground">
-                Max: {formatCHF(MAX_3A_EMPLOYED)} for employed
-              </p>
-            </div>
-            <div className="flex items-center gap-3">
-              <Switch checked={isDualIncome} onCheckedChange={setIsDualIncome} />
-              <Label>Dual income household</Label>
-            </div>
-            {isDualIncome && filingStatus === "married" && (
-              <div className="space-y-2">
-                <Label>Lower Annual Income (CHF)</Label>
+
+            {isDualIncome && derivedFilingStatus === "married" && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <Label className="text-sm">Lower Income (for deduction)</Label>
+                  {lowerIncomeOverride !== null && (
+                    <button
+                      className="text-xs text-primary hover:underline"
+                      onClick={() => setLowerIncomeOverride(null)}
+                    >
+                      Reset
+                    </button>
+                  )}
+                </div>
                 <Input
                   type="number"
-                  value={lowerIncome}
-                  onChange={(e) => setLowerIncome(Number(e.target.value))}
+                  value={lowerIncomeOverride ?? lowerIncomeDefault}
+                  onChange={(e) => setLowerIncomeOverride(Number(e.target.value))}
+                  className="h-8"
                 />
               </div>
             )}
-            <div className="flex items-center gap-3">
-              <Switch checked={churchTax} onCheckedChange={setChurchTax} />
-              <Label>Church tax</Label>
+
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Deductions</p>
+
+              <div className="space-y-1">
+                <Label className="text-sm">Pillar 3a (CHF/year)</Label>
+                <Input
+                  type="number"
+                  value={pension3a}
+                  onChange={(e) => setPension3a(Number(e.target.value))}
+                  className="h-8"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Max {formatCHF(MAX_3A_EMPLOYED)}/person × {numAdults}
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-sm">Kinderzulage (child allowance)</Label>
+                <Input
+                  type="number"
+                  value={childAllowance}
+                  onChange={(e) => setChildAllowance(Number(e.target.value))}
+                  className="h-8"
+                />
+                <p className="text-xs text-muted-foreground">
+                  ~CHF 200–300/child/month (not taxed, added to net)
+                </p>
+              </div>
+
+              <div className="space-y-1">
+                <Label className="text-sm">Other deductions</Label>
+                <Input
+                  type="number"
+                  value={otherDeductions}
+                  onChange={(e) => setOtherDeductions(Number(e.target.value))}
+                  placeholder="0"
+                  className="h-8"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Charitable donations, further education, etc.
+                </p>
+              </div>
+            </div>
+
+            <div className="border-t pt-3 space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Taxable income</span>
+                <span className="font-medium">{formatCHF(result.taxableIncome)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total deductions</span>
+                <span>{formatCHF(result.totalDeductions)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Church tax</span>
+                <span>{derivedChurchTax ? "Yes" : "No"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">{numChildren} children</span>
+                <span>{derivedFilingStatus}</span>
+              </div>
             </div>
           </CardContent>
         </Card>
 
         {/* Charts */}
         <div className="space-y-6 lg:col-span-2">
-          {/* Tax breakdown pie */}
           <Card>
             <CardHeader>
               <CardTitle>Tax Breakdown</CardTitle>
@@ -263,61 +299,40 @@ export function TaxPage() {
                           <Cell key={i} fill={PIE_COLORS[i]} />
                         ))}
                       </Pie>
-                      <Tooltip
-                        formatter={(value) => formatCHF(Number(value), true)}
-                      />
+                      <Tooltip formatter={(value) => formatCHF(Number(value), true)} />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
                 <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-3 w-3 rounded-full bg-blue-500" />
-                      <span className="text-sm">Federal</span>
-                    </div>
-                    <span className="font-medium">{formatCHF(result.federal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-3 w-3 rounded-full bg-green-500" />
-                      <span className="text-sm">Cantonal</span>
-                    </div>
-                    <span className="font-medium">{formatCHF(result.cantonal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <div className="h-3 w-3 rounded-full bg-amber-500" />
-                      <span className="text-sm">Municipal ({municipality})</span>
-                    </div>
-                    <span className="font-medium">{formatCHF(result.municipal)}</span>
-                  </div>
-                  {result.church > 0 && (
-                    <div className="flex items-center justify-between">
+                  {[
+                    { label: "Federal", value: result.federal, color: "bg-blue-500" },
+                    { label: "Cantonal", value: result.cantonal, color: "bg-green-500" },
+                    { label: `Municipal (${derivedMunicipality})`, value: result.municipal, color: "bg-amber-500" },
+                    ...(result.church > 0 ? [{ label: "Church", value: result.church, color: "bg-red-500" }] : []),
+                  ].map((item) => (
+                    <div key={item.label} className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <div className="h-3 w-3 rounded-full bg-red-500" />
-                        <span className="text-sm">Church</span>
+                        <div className={`h-3 w-3 rounded-full ${item.color}`} />
+                        <span className="text-sm">{item.label}</span>
                       </div>
-                      <span className="font-medium">{formatCHF(result.church)}</span>
+                      <span className="font-medium">{formatCHF(item.value)}</span>
                     </div>
-                  )}
-                  <div className="border-t pt-2">
-                    <div className="flex items-center justify-between font-semibold">
-                      <span>Total</span>
-                      <span>{formatCHF(result.total)}</span>
-                    </div>
+                  ))}
+                  <div className="border-t pt-2 flex items-center justify-between font-semibold">
+                    <span>Total</span>
+                    <span>{formatCHF(result.total)}</span>
                   </div>
-                  <Badge variant="secondary" className="mt-2">
-                    Net after tax: {formatCHF(grossIncome - result.total)} / year
+                  <Badge variant="secondary">
+                    Net: {formatCHF(netAfterTax)}/year · {formatCHF(Math.round(netAfterTax / 12))}/month
                   </Badge>
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          {/* Tax at different income levels */}
           <Card>
             <CardHeader>
-              <CardTitle>Tax Projection by Income Level</CardTitle>
+              <CardTitle>Tax at Different Income Levels</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="h-72">
