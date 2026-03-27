@@ -47,7 +47,7 @@ function getDefaultPayoutMonths(freq: BonusFrequency): number[] {
 }
 
 export function IncomePage() {
-  const { incomes, loading, error, addIncome, updateIncome, deleteIncome, totalAnnualGross, totalMonthlyGross } =
+  const { incomes, loading, error, addIncome, updateIncome, deleteIncome, totalAnnualGross, totalAnnualBase, totalAnnualBonus, totalMonthlyGross } =
     useIncome()
   const { family } = useFamily()
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -135,9 +135,9 @@ export function IncomePage() {
     }
   }
 
-  // Chart data
+  // Chart data — split base vs bonus
   const chartData = (() => {
-    const years: Record<string, number> = {}
+    const years: Record<string, { base: number; bonus: number }> = {}
     for (const inc of incomes) {
       if (inc.isProjection) continue
       const start = new Date(inc.startDate).getFullYear()
@@ -145,12 +145,14 @@ export function IncomePage() {
         ? new Date(inc.endDate).getFullYear()
         : new Date().getFullYear()
       for (let y = start; y <= end; y++) {
-        years[y] = (years[y] ?? 0) + Number(inc.annualGross) + Number(inc.bonus ?? 0)
+        if (!years[y]) years[y] = { base: 0, bonus: 0 }
+        years[y].base += Number(inc.annualGross || 0)
+        years[y].bonus += Number(inc.bonus || 0)
       }
     }
     return Object.entries(years)
       .sort(([a], [b]) => Number(a) - Number(b))
-      .map(([year, total]) => ({ year, total }))
+      .map(([year, data]) => ({ year, base: data.base, bonus: data.bonus }))
   })()
 
   if (loading) return <div className="text-muted-foreground">Loading...</div>
@@ -295,7 +297,7 @@ export function IncomePage() {
       </div>
 
       {/* Summary cards */}
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Total Annual Gross</CardTitle>
@@ -303,6 +305,29 @@ export function IncomePage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCHF(totalAnnualGross)}</div>
+            <p className="text-xs text-muted-foreground">{formatCHF(totalMonthlyGross)}/mo</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Base Salary</CardTitle>
+            <Wallet className="h-4 w-4 text-green-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCHF(totalAnnualBase)}</div>
+            <p className="text-xs text-muted-foreground">{formatCHF(Math.round(totalAnnualBase / 12))}/mo</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Bonus</CardTitle>
+            <TrendingUp className="h-4 w-4 text-amber-500" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCHF(totalAnnualBonus)}</div>
+            <p className="text-xs text-muted-foreground">
+              {totalAnnualGross > 0 ? `${Math.round((totalAnnualBonus / totalAnnualGross) * 100)}% of total` : "—"}
+            </p>
           </CardContent>
         </Card>
         <Card>
@@ -312,6 +337,7 @@ export function IncomePage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCHF(totalMonthlyGross)}</div>
+            <p className="text-xs text-muted-foreground">base + bonus avg</p>
           </CardContent>
         </Card>
         <Card>
@@ -346,7 +372,8 @@ export function IncomePage() {
                   <YAxis />
                   <Tooltip formatter={(v) => formatCHF(Number(v))} />
                   <Legend />
-                  <Bar dataKey="total" name="Total Income (CHF)" fill="#22c55e" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="base" name="Base Salary" fill="#22c55e" stackId="income" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="bonus" name="Bonus" fill="#f59e0b" stackId="income" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

@@ -80,15 +80,21 @@ export function useIncome() {
   )
 
   const today = new Date().toISOString().split("T")[0]
-  const currentIncomes = incomes.filter((i) => {
+  const currentIncomes = useMemo(() => incomes.filter((i) => {
     if (i.isProjection) return false
     if (!i.endDate) return true
     return i.endDate >= today
-  })
+  }), [incomes, today])
 
-  const totalAnnualGross = currentIncomes
-    .reduce((sum, i) => sum + Number(i.annualGross || 0) + Number(i.bonus || 0), 0)
-
+  const totalAnnualBase = useMemo(
+    () => currentIncomes.reduce((sum, i) => sum + Number(i.annualGross || 0), 0),
+    [currentIncomes]
+  )
+  const totalAnnualBonus = useMemo(
+    () => currentIncomes.reduce((sum, i) => sum + Number(i.bonus || 0), 0),
+    [currentIncomes]
+  )
+  const totalAnnualGross = totalAnnualBase + totalAnnualBonus
   const totalMonthlyGross = Math.round(totalAnnualGross / 12)
 
   // Build a 24-month cash flow timeline with bonus payout timing
@@ -144,6 +150,8 @@ export function useIncome() {
     updateIncome,
     deleteIncome,
     totalAnnualGross,
+    totalAnnualBase,
+    totalAnnualBonus,
     totalMonthlyGross,
     incomeTimeline,
   }
