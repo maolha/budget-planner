@@ -59,16 +59,25 @@ export function DashboardPage() {
   const now = new Date()
   const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
   const hasTransactions = expenses.some((e) => e.date.substring(0, 7) === currentYM)
-  const monthlyByCategory = categories
-    .map((cat) => {
-      const actual = expenses
-        .filter((e) => e.categoryId === cat.id && e.date.substring(0, 7) === currentYM)
-        .reduce((s, e) => s + e.amount, 0)
-      const value = hasTransactions ? actual : Number(cat.monthlyBudget ?? 0)
-      return { name: cat.name, value, color: cat.color }
-    })
-    .filter((d) => d.value > 0)
-    .sort((a, b) => b.value - a.value)
+  const monthlyByCategory = (() => {
+    const all = categories
+      .map((cat) => {
+        const actual = expenses
+          .filter((e) => e.categoryId === cat.id && e.date.substring(0, 7) === currentYM)
+          .reduce((s, e) => s + e.amount, 0)
+        const value = hasTransactions ? actual : Number(cat.monthlyBudget ?? 0)
+        return { name: cat.name, value, color: cat.color }
+      })
+      .filter((d) => d.value > 0)
+      .sort((a, b) => b.value - a.value)
+
+    // Show top 5, group the rest into "Other"
+    if (all.length <= 6) return all
+    const top = all.slice(0, 5)
+    const rest = all.slice(5)
+    const otherValue = rest.reduce((s, d) => s + d.value, 0)
+    return [...top, { name: "Other", value: otherValue, color: "#94a3b8" }]
+  })()
 
   // Monthly spending trend (last 6 months)
   const spendingTrend = Array.from({ length: 6 }, (_, i) => {
