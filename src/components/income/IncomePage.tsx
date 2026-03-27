@@ -63,9 +63,17 @@ export function IncomePage() {
 
   const handleAdd = async () => {
     const effectiveMemberId = memberId || family?.adults[0]?.id || ""
-    if (!effectiveMemberId || !annualGross) return
+    console.log("handleAdd called", { effectiveMemberId, annualGross, employer, familyId: family?.id })
+    if (!effectiveMemberId) {
+      console.error("No member selected")
+      return
+    }
+    if (!annualGross) {
+      console.error("No salary entered")
+      return
+    }
     try {
-      await addIncome({
+      const id = await addIncome({
         memberId: effectiveMemberId,
         employer,
         jobTitle,
@@ -76,6 +84,7 @@ export function IncomePage() {
         endDate: endDate || undefined,
         isProjection: false,
       })
+      console.log("Income saved with id:", id)
       setDialogOpen(false)
       resetForm()
     } catch (err) {
