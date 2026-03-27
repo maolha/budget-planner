@@ -51,7 +51,7 @@ const PRIORITY_COLORS = [
 ]
 
 export function ExpensesPage() {
-  const { expenses, categories, loading, addExpense, deleteExpense, updateCategoryPriority } =
+  const { expenses, categories, loading, addExpense, deleteExpense, updateCategoryPriority, updateCategoryBudget } =
     useExpenses()
   const { totalAnnualGross } = useIncome()
   const { family } = useFamily()
@@ -282,7 +282,9 @@ export function ExpensesPage() {
                   )
                   const actual = monthlyTotals[cat.id] ?? 0
                   const recommended = rec?.recommendedMonthly ?? 0
-                  const isOverBudget = actual > recommended && recommended > 0
+                  const budget = cat.monthlyBudget ?? 0
+                  const effectiveBudget = budget || recommended
+                  const isOverBudget = actual > effectiveBudget && effectiveBudget > 0
 
                   return (
                     <div key={cat.id} className="space-y-2 rounded-lg border p-4">
@@ -299,17 +301,43 @@ export function ExpensesPage() {
                             </Badge>
                           )}
                         </div>
-                        <div className="flex items-center gap-4 text-sm">
-                          <span className="text-muted-foreground">
-                            Recommended: {formatCHF(recommended)}
-                          </span>
-                          <span className={isOverBudget ? "text-red-600 font-medium" : ""}>
-                            Actual: {formatCHF(actual)}
-                          </span>
-                        </div>
+                        <span className={`text-sm ${isOverBudget ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                          Spent: {formatCHF(actual)}
+                        </span>
                       </div>
+
+                      {/* Budget input: recommended suggestion with accept/override */}
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2 flex-1">
+                          <Label className="text-xs text-muted-foreground whitespace-nowrap w-16">Budget</Label>
+                          <Input
+                            type="number"
+                            value={budget || ""}
+                            onChange={(e) => updateCategoryBudget(cat.id, Number(e.target.value))}
+                            placeholder={recommended ? `${recommended}` : "0"}
+                            className="h-8 text-sm"
+                          />
+                        </div>
+                        {recommended > 0 && !budget && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 text-xs shrink-0"
+                            onClick={() => updateCategoryBudget(cat.id, recommended)}
+                          >
+                            Accept {formatCHF(recommended)}
+                          </Button>
+                        )}
+                        {budget > 0 && budget !== recommended && recommended > 0 && (
+                          <span className="text-xs text-muted-foreground shrink-0">
+                            Suggested: {formatCHF(recommended)}
+                          </span>
+                        )}
+                      </div>
+
                       {!cat.isFixed && (
                         <div className="flex items-center gap-4">
+                          <Label className="text-xs text-muted-foreground w-16">Priority</Label>
                           <Slider
                             value={[cat.priority]}
                             min={0}
@@ -323,14 +351,15 @@ export function ExpensesPage() {
                           </Badge>
                         </div>
                       )}
-                      {recommended > 0 && (
+
+                      {effectiveBudget > 0 && (
                         <div className="h-2 rounded-full bg-gray-100">
                           <div
                             className={`h-full rounded-full transition-all ${
                               isOverBudget ? "bg-red-500" : "bg-green-500"
                             }`}
                             style={{
-                              width: `${Math.min((actual / recommended) * 100, 100)}%`,
+                              width: `${Math.min((actual / effectiveBudget) * 100, 100)}%`,
                             }}
                           />
                         </div>
