@@ -47,9 +47,14 @@ export function DashboardPage() {
   )
 
   const monthlyNetIncome = Math.round((totalAnnualGross - taxResult.total) / 12)
-  const monthlySavings = monthlyNetIncome - totalMonthlyExpenses
-  const savingsRate = monthlyNetIncome > 0 ? monthlySavings / monthlyNetIncome : 0
   const netWorth = useMemo(() => calculateNetWorth(assets), [assets])
+
+  // Budget-based monthly expenses (sum of all category budgets); fall back to actual spend
+  const totalMonthlyBudget = categories.reduce((s, c) => s + Number(c.monthlyBudget ?? 0), 0)
+  const effectiveMonthlyExpenses = totalMonthlyBudget > 0 ? totalMonthlyBudget : totalMonthlyExpenses
+
+  const monthlySavings = monthlyNetIncome - effectiveMonthlyExpenses
+  const savingsRate = monthlyNetIncome > 0 ? monthlySavings / monthlyNetIncome : 0
 
   // Spending by category (this month)
   const now = new Date()
@@ -77,10 +82,6 @@ export function DashboardPage() {
 
   // Top 5 expenses this month
   const topExpenses = monthlyByCategory.slice(0, 5)
-
-  // Budget-based monthly expenses (sum of all category budgets)
-  const totalMonthlyBudget = categories.reduce((s, c) => s + Number(c.monthlyBudget ?? 0), 0)
-  const effectiveMonthlyExpenses = totalMonthlyBudget > 0 ? totalMonthlyBudget : totalMonthlyExpenses
 
   // 24-month outlook
   const outlook24m = useMemo(() => {
@@ -158,8 +159,10 @@ export function DashboardPage() {
             <ArrowDownUp className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCHF(totalMonthlyExpenses)}</div>
-            <p className="text-xs text-muted-foreground">this month</p>
+            <div className="text-2xl font-bold">{formatCHF(effectiveMonthlyExpenses)}</div>
+            <p className="text-xs text-muted-foreground">
+              {totalMonthlyBudget > 0 && totalMonthlyExpenses === 0 ? "monthly budget" : "this month"}
+            </p>
           </CardContent>
         </Card>
         <Card>
