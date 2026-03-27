@@ -30,7 +30,6 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Bar,
-  Area,
 } from "recharts"
 import { runForecast, compareForcasts } from "@/engine/forecast/forecast-engine"
 import { LIFE_EVENT_TYPES } from "@/lib/constants"

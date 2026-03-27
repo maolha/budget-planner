@@ -2,7 +2,6 @@ import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Wallet, ArrowDownUp, PiggyBank, TrendingUp, Landmark, AlertCircle, Loader2, Banknote } from "lucide-react"
 import {
-  BarChart,
   Bar,
   XAxis,
   YAxis,
@@ -13,7 +12,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  AreaChart,
   Area,
   ComposedChart,
   Line,

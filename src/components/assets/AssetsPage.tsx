@@ -49,7 +49,7 @@ const TYPE_LABELS: Record<string, string> = Object.fromEntries([
 ])
 
 export function AssetsPage() {
-  const { assets, loading, addAsset, updateAsset, updateAssetValue, deleteAsset } = useAssets()
+  const { assets, loading, addAsset, updateAssetValue, deleteAsset } = useAssets()
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null)
 
   // Inline add row state (assets)
@@ -234,7 +234,6 @@ export function AssetsPage() {
                       key={asset.id}
                       asset={asset}
                       onUpdateValue={(v) => updateAssetValue(asset.id, v)}
-                      onUpdate={(data) => updateAsset(asset.id, data)}
                       onDelete={() => deleteAsset(asset.id)}
                       expanded={expandedHistory === asset.id}
                       onToggleHistory={() =>
@@ -351,7 +350,6 @@ export function AssetsPage() {
                     key={asset.id}
                     asset={asset}
                     onUpdateValue={(v) => updateAssetValue(asset.id, v)}
-                    onUpdate={(data) => updateAsset(asset.id, data)}
                     onDelete={() => deleteAsset(asset.id)}
                     expanded={expandedHistory === asset.id}
                     onToggleHistory={() =>
@@ -441,14 +439,12 @@ export function AssetsPage() {
 function AssetRow({
   asset,
   onUpdateValue,
-  onUpdate,
   onDelete,
   expanded,
   onToggleHistory,
 }: {
   asset: Asset
   onUpdateValue: (v: number) => void
-  onUpdate: (data: Partial<Asset>) => void
   onDelete: () => void
   expanded: boolean
   onToggleHistory: () => void
