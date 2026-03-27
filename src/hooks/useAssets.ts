@@ -16,6 +16,7 @@ export function useAssets() {
   const { familyId } = useAuthStore()
   const [assets, setAssets] = useState<Asset[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!familyId) {
@@ -24,14 +25,25 @@ export function useAssets() {
       return
     }
 
+    setLoading(true)
+    setError(null)
+
     const q = query(
       collection(db, "families", familyId, "assets")
     )
 
-    return onSnapshot(q, (snap) => {
-      setAssets(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Asset))
-      setLoading(false)
-    })
+    return onSnapshot(
+      q,
+      (snap) => {
+        setAssets(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Asset))
+        setLoading(false)
+      },
+      (err) => {
+        console.error("[useAssets] Firestore listener error:", err)
+        setError(err.message)
+        setLoading(false)
+      }
+    )
   }, [familyId])
 
   const addAsset = useCallback(
@@ -71,5 +83,5 @@ export function useAssets() {
     [familyId]
   )
 
-  return { assets, loading, addAsset, updateAsset, deleteAsset }
+  return { assets, loading, error, addAsset, updateAsset, deleteAsset }
 }

@@ -35,7 +35,7 @@ import { formatCHF, formatDate } from "@/lib/formatters"
 import type { IncomeType } from "@/types"
 
 export function IncomePage() {
-  const { incomes, loading, addIncome, updateIncome, deleteIncome, totalAnnualGross, totalMonthlyGross } =
+  const { incomes, loading, error, addIncome, updateIncome, deleteIncome, totalAnnualGross, totalMonthlyGross } =
     useIncome()
   const { family } = useFamily()
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -132,6 +132,15 @@ export function IncomePage() {
   })()
 
   if (loading) return <div className="text-muted-foreground">Loading...</div>
+
+  if (error) {
+    return (
+      <div className="rounded-lg border border-destructive p-4">
+        <p className="font-medium text-destructive">Failed to load income data</p>
+        <p className="text-sm text-muted-foreground">{error}</p>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">

@@ -16,6 +16,7 @@ export function useIncome() {
   const { familyId } = useAuthStore()
   const [incomes, setIncomes] = useState<IncomeRecord[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!familyId) {
@@ -24,17 +25,28 @@ export function useIncome() {
       return
     }
 
+    setLoading(true)
+    setError(null)
+
     const q = query(
       collection(db, "families", familyId, "incomeRecords")
     )
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const records = snapshot.docs.map(
-        (d) => ({ id: d.id, ...d.data() }) as IncomeRecord
-      )
-      setIncomes(records)
-      setLoading(false)
-    })
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const records = snapshot.docs.map(
+          (d) => ({ id: d.id, ...d.data() }) as IncomeRecord
+        )
+        setIncomes(records)
+        setLoading(false)
+      },
+      (err) => {
+        console.error("[useIncome] Firestore listener error:", err)
+        setError(err.message)
+        setLoading(false)
+      }
+    )
 
     return unsubscribe
   }, [familyId])
@@ -77,6 +89,7 @@ export function useIncome() {
   return {
     incomes,
     loading,
+    error,
     addIncome,
     updateIncome,
     deleteIncome,

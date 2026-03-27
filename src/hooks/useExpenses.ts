@@ -18,6 +18,7 @@ export function useExpenses() {
   const [expenses, setExpenses] = useState<Expense[]>([])
   const [categories, setCategories] = useState<ExpenseCategory[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   // Listen to expense categories
   useEffect(() => {
@@ -28,9 +29,16 @@ export function useExpenses() {
     const q = query(
       collection(db, "families", familyId, "expenseCategories")
     )
-    return onSnapshot(q, (snap) => {
-      setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ExpenseCategory))
-    })
+    return onSnapshot(
+      q,
+      (snap) => {
+        setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ExpenseCategory))
+      },
+      (err) => {
+        console.error("[useExpenses] Categories listener error:", err)
+        setError(err.message)
+      }
+    )
   }, [familyId])
 
   // Listen to expenses
@@ -40,13 +48,23 @@ export function useExpenses() {
       setLoading(false)
       return
     }
+    setLoading(true)
+    setError(null)
     const q = query(
       collection(db, "families", familyId, "expenses")
     )
-    return onSnapshot(q, (snap) => {
-      setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Expense))
-      setLoading(false)
-    })
+    return onSnapshot(
+      q,
+      (snap) => {
+        setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Expense))
+        setLoading(false)
+      },
+      (err) => {
+        console.error("[useExpenses] Expenses listener error:", err)
+        setError(err.message)
+        setLoading(false)
+      }
+    )
   }, [familyId])
 
   const addExpense = useCallback(
@@ -112,6 +130,7 @@ export function useExpenses() {
     expenses,
     categories,
     loading,
+    error,
     addExpense,
     deleteExpense,
     updateCategoryPriority,

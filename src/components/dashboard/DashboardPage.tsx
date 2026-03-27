@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Wallet, ArrowDownUp, PiggyBank, TrendingUp, Landmark } from "lucide-react"
+import { Wallet, ArrowDownUp, PiggyBank, TrendingUp, Landmark, AlertCircle, Loader2 } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -25,10 +25,13 @@ import { calculateNetWorth } from "@/engine/net-worth/net-worth-calculator"
 import { formatCHF, formatPercent } from "@/lib/formatters"
 
 export function DashboardPage() {
-  const { totalAnnualGross, incomes } = useIncome()
-  const { expenses, categories, totalMonthlyExpenses } = useExpenses()
-  const { assets } = useAssets()
-  const { family } = useFamily()
+  const { totalAnnualGross, incomes, loading: incomeLoading, error: incomeError } = useIncome()
+  const { expenses, categories, totalMonthlyExpenses, loading: expenseLoading, error: expenseError } = useExpenses()
+  const { assets, loading: assetLoading, error: assetError } = useAssets()
+  const { family, loading: familyLoading } = useFamily()
+
+  const isLoading = incomeLoading || expenseLoading || assetLoading || familyLoading
+  const errors = [incomeError, expenseError, assetError].filter(Boolean)
 
   const numChildren = family?.children?.filter((c) => !c.isPlanned).length ?? 0
   const numAdults = family?.adults?.length ?? 2
@@ -102,6 +105,14 @@ export function DashboardPage() {
 
   const hasData = incomes.length > 0 || expenses.length > 0 || assets.length > 0
 
+  if (isLoading) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div>
@@ -112,6 +123,18 @@ export function DashboardPage() {
             : "Your family's financial overview at a glance."}
         </p>
       </div>
+
+      {errors.length > 0 && (
+        <Card className="border-destructive">
+          <CardContent className="flex items-center gap-3 py-4">
+            <AlertCircle className="h-5 w-5 text-destructive" />
+            <div>
+              <p className="font-medium text-destructive">Failed to load data</p>
+              <p className="text-sm text-muted-foreground">{errors.join("; ")}</p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Summary cards */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
