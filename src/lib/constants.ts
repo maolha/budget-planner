@@ -71,6 +71,14 @@ export const ASSET_TYPES = [
   { value: "other_illiquid", label: "Other (Illiquid)" },
 ] as const
 
+export const LIABILITY_TYPE_OPTIONS = [
+  { value: "personal_loan", label: "Personal Loan" },
+  { value: "auto_loan", label: "Auto Loan" },
+  { value: "student_loan", label: "Student Loan" },
+  { value: "credit_card", label: "Credit Card" },
+  { value: "other_liability", label: "Other Liability" },
+] as const
+
 export const LIFE_EVENT_TYPES = [
   { value: "new_child", label: "New Child" },
   { value: "salary_change", label: "Salary Change" },

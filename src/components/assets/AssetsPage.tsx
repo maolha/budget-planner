@@ -19,9 +19,12 @@ import {
 } from "recharts"
 import { useAssets } from "@/hooks/useAssets"
 import { calculateNetWorth } from "@/engine/net-worth/net-worth-calculator"
-import { ASSET_TYPES } from "@/lib/constants"
+import { ASSET_TYPES, LIABILITY_TYPE_OPTIONS } from "@/lib/constants"
+import { LIABILITY_TYPES } from "@/types/asset"
 import { formatCHF, formatDate } from "@/lib/formatters"
 import type { AssetType, Asset } from "@/types"
+
+const LIABILITY_TYPE_SET = new Set<string>(LIABILITY_TYPES)
 
 const TYPE_COLORS: Record<string, string> = {
   bank_account: "#3b82f6",
@@ -33,24 +36,40 @@ const TYPE_COLORS: Record<string, string> = {
   crypto: "#f97316",
   other_liquid: "#64748b",
   other_illiquid: "#94a3b8",
+  personal_loan: "#ef4444",
+  auto_loan: "#dc2626",
+  student_loan: "#b91c1c",
+  credit_card: "#f87171",
+  other_liability: "#fca5a5",
 }
 
-const TYPE_LABELS: Record<string, string> = Object.fromEntries(
-  ASSET_TYPES.map((t) => [t.value, t.label])
-)
+const TYPE_LABELS: Record<string, string> = Object.fromEntries([
+  ...ASSET_TYPES.map((t) => [t.value, t.label]),
+  ...LIABILITY_TYPE_OPTIONS.map((t) => [t.value, t.label]),
+])
 
 export function AssetsPage() {
   const { assets, loading, addAsset, updateAsset, updateAssetValue, deleteAsset } = useAssets()
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null)
 
-  // Inline add row state
+  // Inline add row state (assets)
   const [addingRow, setAddingRow] = useState(false)
   const [newName, setNewName] = useState("")
   const [newType, setNewType] = useState<AssetType>("bank_account")
   const [newValue, setNewValue] = useState(0)
   const [newInstitution, setNewInstitution] = useState("")
 
+  // Inline add row state (liabilities)
+  const [addingLiability, setAddingLiability] = useState(false)
+  const [newLiabName, setNewLiabName] = useState("")
+  const [newLiabType, setNewLiabType] = useState<AssetType>("personal_loan")
+  const [newLiabValue, setNewLiabValue] = useState(0)
+  const [newLiabInstitution, setNewLiabInstitution] = useState("")
+
   const netWorth = useMemo(() => calculateNetWort(assets), [assets])
+
+  const assetItems = assets.filter((a) => !LIABILITY_TYPE_SET.has(a.type))
+  const liabilityItems = assets.filter((a) => LIABILITY_TYPE_SET.has(a.type))
 
   const handleAddRow = async () => {
     if (!newName || !newValue) return
@@ -66,6 +85,22 @@ export function AssetsPage() {
     setNewValue(0)
     setNewInstitution("")
     setAddingRow(false)
+  }
+
+  const handleAddLiability = async () => {
+    if (!newLiabName || !newLiabValue) return
+    await addAsset({
+      name: newLiabName,
+      type: newLiabType,
+      currentValue: newLiabValue,
+      currency: "CHF",
+      institution: newLiabInstitution,
+    })
+    setNewLiabName("")
+    setNewLiabType("personal_loan")
+    setNewLiabValue(0)
+    setNewLiabInstitution("")
+    setAddingLiability(false)
   }
 
   // Pie chart data
@@ -194,7 +229,7 @@ export function AssetsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {assets.map((asset) => (
+                  {assetItems.map((asset) => (
                     <AssetRow
                       key={asset.id}
                       asset={asset}
@@ -260,7 +295,7 @@ export function AssetsPage() {
                       </td>
                     </tr>
                   )}
-                  {assets.length === 0 && !addingRow && (
+                  {assetItems.length === 0 && !addingRow && (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-muted-foreground">
                         No assets yet. Click "Add" to get started.
@@ -268,7 +303,7 @@ export function AssetsPage() {
                     </tr>
                   )}
                 </tbody>
-                {assets.length > 0 && (
+                {assetItems.length > 0 && (
                   <tfoot>
                     <tr className="border-t font-medium">
                       <td className="pt-2" colSpan={3}>Total</td>
@@ -283,6 +318,122 @@ export function AssetsPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Liabilities table */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="flex items-center gap-2">
+            <TrendingDown className="h-5 w-5 text-red-500" />
+            Liabilities
+          </CardTitle>
+          {!addingLiability && (
+            <Button size="sm" variant="outline" onClick={() => setAddingLiability(true)}>
+              <Plus className="mr-1 h-4 w-4" /> Add Liability
+            </Button>
+          )}
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left text-muted-foreground">
+                  <th className="pb-2 font-medium">Name</th>
+                  <th className="pb-2 font-medium">Type</th>
+                  <th className="pb-2 font-medium">Institution</th>
+                  <th className="pb-2 font-medium text-right">Balance (CHF)</th>
+                  <th className="pb-2 font-medium text-right">Change</th>
+                  <th className="pb-2 w-16"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {liabilityItems.map((asset) => (
+                  <AssetRow
+                    key={asset.id}
+                    asset={asset}
+                    onUpdateValue={(v) => updateAssetValue(asset.id, v)}
+                    onUpdate={(data) => updateAsset(asset.id, data)}
+                    onDelete={() => deleteAsset(asset.id)}
+                    expanded={expandedHistory === asset.id}
+                    onToggleHistory={() =>
+                      setExpandedHistory(expandedHistory === asset.id ? null : asset.id)
+                    }
+                  />
+                ))}
+                {addingLiability && (
+                  <tr className="border-b bg-muted/30">
+                    <td className="py-2 pr-2">
+                      <Input
+                        value={newLiabName}
+                        onChange={(e) => setNewLiabName(e.target.value)}
+                        placeholder="e.g. Car Loan"
+                        className="h-8 text-sm"
+                        autoFocus
+                      />
+                    </td>
+                    <td className="py-2 pr-2">
+                      <Select value={newLiabType} onValueChange={(v) => setNewLiabType(v as AssetType)}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {LIABILITY_TYPE_OPTIONS.map((t) => (
+                            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="py-2 pr-2">
+                      <Input
+                        value={newLiabInstitution}
+                        onChange={(e) => setNewLiabInstitution(e.target.value)}
+                        placeholder="Lender"
+                        className="h-8 text-sm"
+                      />
+                    </td>
+                    <td className="py-2 pr-2">
+                      <Input
+                        type="number"
+                        value={newLiabValue || ""}
+                        onChange={(e) => setNewLiabValue(Number(e.target.value))}
+                        className="h-8 text-sm text-right"
+                        onKeyDown={(e) => { if (e.key === "Enter") handleAddLiability() }}
+                      />
+                    </td>
+                    <td></td>
+                    <td className="py-2">
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={handleAddLiability}>
+                          Save
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => setAddingLiability(false)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {liabilityItems.length === 0 && !addingLiability && (
+                  <tr>
+                    <td colSpan={6} className="py-6 text-center text-muted-foreground">
+                      No liabilities. Click "Add Liability" to track loans, credit cards, etc.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+              {liabilityItems.length > 0 && (
+                <tfoot>
+                  <tr className="border-t font-medium text-red-600">
+                    <td className="pt-2" colSpan={3}>Total Liabilities</td>
+                    <td className="pt-2 text-right">{formatCHF(netWorth.totalLiabilities)}</td>
+                    <td></td>
+                    <td></td>
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

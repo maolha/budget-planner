@@ -64,8 +64,9 @@ export function TaxPage() {
         pension3a,
         isDualIncome,
         lowerIncome,
+        otherDeductions,
       }),
-    [grossIncome, derivedFilingStatus, numChildren, derivedMunicipality, derivedChurchTax, pension3a, isDualIncome, lowerIncome]
+    [grossIncome, derivedFilingStatus, numChildren, derivedMunicipality, derivedChurchTax, pension3a, isDualIncome, lowerIncome, otherDeductions]
   )
 
   const pieData = [
@@ -84,6 +85,7 @@ export function TaxPage() {
       pension3a,
       isDualIncome,
       lowerIncome: Math.round(lowerIncome * mult),
+      otherDeductions,
     })
     return {
       income: `${(income / 1000).toFixed(0)}k`,

@@ -71,16 +71,18 @@ export function calculateTaxSimple(
     pension3a?: number
     isDualIncome?: boolean
     lowerIncome?: number
+    otherDeductions?: number
   }
 ): TaxBreakdown {
-  const { municipality, churchTax, pension3a, isDualIncome, lowerIncome } = options ?? {}
+  const { municipality, churchTax, pension3a, isDualIncome, lowerIncome, otherDeductions } = options ?? {}
 
   const deductions = calculateStandardDeductions(
     filingStatus,
     numberOfChildren,
     pension3a ?? 0,
     isDualIncome ?? false,
-    lowerIncome
+    lowerIncome,
+    otherDeductions ?? 0
   )
 
   return calculateZurichTax({

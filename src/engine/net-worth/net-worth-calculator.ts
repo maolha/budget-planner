@@ -1,4 +1,5 @@
 import type { Asset } from "@/types"
+import { LIABILITY_TYPES } from "@/types/asset"
 import type { NetWorthSnapshot } from "./types"
 
 const LIQUID_TYPES = new Set(["bank_account", "savings_account", "other_liquid"])
@@ -6,9 +7,10 @@ const INVESTMENT_TYPES = new Set(["investment"])
 const PROPERTY_TYPES = new Set(["real_estate"])
 const PENSION_TYPES = new Set(["pension_2nd_pillar", "pension_3a"])
 const CRYPTO_TYPES = new Set(["crypto"])
+const LIABILITY_TYPE_SET = new Set(LIABILITY_TYPES)
 
 /**
- * Calculate current net worth from all assets.
+ * Calculate current net worth from all assets and liabilities.
  */
 export function calculateNetWorth(assets: Asset[]): NetWorthSnapshot {
   const breakdown = {
@@ -25,7 +27,9 @@ export function calculateNetWorth(assets: Asset[]): NetWorthSnapshot {
   for (const asset of assets) {
     const value = asset.currentValue
 
-    if (LIQUID_TYPES.has(asset.type)) {
+    if (LIABILITY_TYPE_SET.has(asset.type)) {
+      breakdown.otherLiabilities += value
+    } else if (LIQUID_TYPES.has(asset.type)) {
       breakdown.liquid += value
     } else if (INVESTMENT_TYPES.has(asset.type)) {
       breakdown.investments += value

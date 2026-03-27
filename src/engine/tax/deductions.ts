@@ -34,7 +34,8 @@ export function calculateStandardDeductions(
   numberOfChildren: number,
   pension3aContribution: number,
   isDualIncome: boolean,
-  lowerIncome?: number
+  lowerIncome?: number,
+  otherDeductionsAmount?: number
 ): TaxDeductions {
   const pension3a = Math.min(pension3aContribution, MAX_3A_EMPLOYED)
   const professionalExpenses = PROFESSIONAL_EXPENSE_FLAT_FEDERAL
@@ -61,7 +62,7 @@ export function calculateStandardDeductions(
     insurancePremiums,
     childDeductionPerChild,
     dualIncomeDeduction,
-    otherDeductions: 0,
+    otherDeductions: otherDeductionsAmount ?? 0,
   }
 }
 

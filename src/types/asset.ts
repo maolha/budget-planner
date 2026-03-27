@@ -11,6 +11,20 @@ export type AssetType =
   | "crypto"
   | "other_liquid"
   | "other_illiquid"
+  // Liability types
+  | "personal_loan"
+  | "auto_loan"
+  | "student_loan"
+  | "credit_card"
+  | "other_liability"
+
+export const LIABILITY_TYPES: AssetType[] = [
+  "personal_loan",
+  "auto_loan",
+  "student_loan",
+  "credit_card",
+  "other_liability",
+]
 
 export interface Asset {
   id: string
@@ -29,6 +43,10 @@ export interface Asset {
 
   // Investment-specific
   annualReturnRate?: number
+
+  // Liability-specific
+  interestRate?: number
+  monthlyPayment?: number
 
   // History
   valueHistory: AssetSnapshot[]
