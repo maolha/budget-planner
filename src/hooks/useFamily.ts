@@ -143,6 +143,31 @@ export function useFamily() {
     return newCode
   }, [familyId])
 
+  const resetCategories = useCallback(async () => {
+    if (!familyId) throw new Error("No family")
+
+    // Delete all existing categories
+    const catSnap = await getDocs(collection(db, "families", familyId, "expenseCategories"))
+    const batch = writeBatch(db)
+    catSnap.docs.forEach((d) => batch.delete(d.ref))
+
+    // Re-seed with current defaults
+    for (const cat of DEFAULT_EXPENSE_CATEGORIES) {
+      const catRef = doc(collection(db, "families", familyId, "expenseCategories"))
+      batch.set(catRef, {
+        name: cat.name,
+        icon: cat.icon,
+        color: cat.color,
+        priority: 3,
+        isDefault: true,
+        sortOrder: cat.sortOrder,
+        isFixed: cat.isFixed,
+      })
+    }
+
+    await batch.commit()
+  }, [familyId])
+
   const updateFamily = useCallback(
     async (updates: Partial<Family>) => {
       if (!familyId) throw new Error("No family")
@@ -170,6 +195,7 @@ export function useFamily() {
     createFamily,
     joinFamily,
     regenerateInviteCode,
+    resetCategories,
     updateFamily,
     completeOnboarding,
   }

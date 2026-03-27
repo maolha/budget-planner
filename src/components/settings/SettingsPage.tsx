@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Save, Plus, Trash2, Copy, RefreshCw, Users } from "lucide-react"
+import { Save, Plus, Trash2, Copy, RefreshCw, Users, RotateCcw } from "lucide-react"
 import { useAuth } from "@/hooks/useAuth"
 import { useFamily } from "@/hooks/useFamily"
 import { toast } from "sonner"
@@ -16,7 +16,7 @@ import { useNavigate } from "react-router-dom"
 
 export function SettingsPage() {
   const { user } = useAuth()
-  const { family, updateFamily, regenerateInviteCode } = useFamily()
+  const { family, updateFamily, regenerateInviteCode, resetCategories } = useFamily()
   const navigate = useNavigate()
 
   const [familyName, setFamilyName] = useState("")
@@ -304,6 +304,37 @@ export function SettingsPage() {
           <Button onClick={handleSave} disabled={saving} className="w-full">
             <Save className="mr-2 h-4 w-4" />
             {saving ? "Saving..." : "Save Changes"}
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Reset Categories */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <RotateCcw className="h-5 w-5" />
+            Expense Categories
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            Reset all expense categories to the latest defaults (German labels, calibrated
+            to your spending patterns). This replaces all current categories — your
+            existing expense records will keep their category references.
+          </p>
+          <Button
+            variant="destructive"
+            onClick={async () => {
+              try {
+                await resetCategories()
+                toast.success("Categories reset to defaults")
+              } catch {
+                toast.error("Failed to reset categories")
+              }
+            }}
+          >
+            <RotateCcw className="mr-2 h-4 w-4" />
+            Reset Categories to Defaults
           </Button>
         </CardContent>
       </Card>
