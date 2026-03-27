@@ -39,10 +39,10 @@ import { formatCHF } from "@/lib/formatters"
 import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/constants"
 
 const GROUPS = [
-  { label: "Fixed Costs", keys: ["housing", "health_insurance", "childcare", "taxes", "pension_3a", "bvg"] },
+  { label: "Fixed Costs", keys: ["housing", "health_insurance", "childcare", "taxes"] },
   { label: "Daily Living", keys: ["groceries", "household", "personal_expenses", "communication"] },
   { label: "Lifestyle", keys: ["restaurants", "holidays", "leisure", "personal_care", "clothing", "gifts"] },
-  { label: "Mobility & Other", keys: ["transport", "car", "investments", "other"] },
+  { label: "Savings, Investments & Other", keys: ["pension_3a", "bvg", "investments", "transport", "car", "other"] },
 ]
 
 export function ExpensesPage() {

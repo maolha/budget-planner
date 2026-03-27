@@ -41,7 +41,7 @@ export const DEFAULT_EXPENSE_CATEGORIES: DefaultCategoryDef[] = [
   { key: "health_insurance", name: "Health Insurance", icon: "HeartPulse", color: "#ef4444", isFixed: true, sortOrder: 2, typicalMonthly: 1500 },
   { key: "childcare", name: "Childcare / Kita", icon: "Baby", color: "#ec4899", isFixed: true, sortOrder: 3, typicalMonthly: 2100 },
   { key: "taxes", name: "Taxes", icon: "Landmark", color: "#475569", isFixed: true, sortOrder: 4 },
-  { key: "pension_3a", name: "Pension (3a)", icon: "PiggyBank", color: "#059669", isFixed: true, sortOrder: 5, typicalMonthly: 1176 },
+  { key: "pension_3a", name: "Pension (3a)", icon: "PiggyBank", color: "#059669", isFixed: false, sortOrder: 5, typicalMonthly: 1176 },
   { key: "bvg", name: "Pension Buy-in (BVG)", icon: "Shield", color: "#0d9488", isFixed: false, sortOrder: 6 },
   { key: "groceries", name: "Groceries & Food", icon: "ShoppingCart", color: "#22c55e", isFixed: false, sortOrder: 7, typicalMonthly: 700 },
   { key: "restaurants", name: "Restaurants & Bars", icon: "UtensilsCrossed", color: "#f97316", isFixed: false, sortOrder: 8, typicalMonthly: 1000 },
