@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,12 +19,23 @@ export function SettingsPage() {
   const { family, updateFamily, regenerateInviteCode } = useFamily()
   const navigate = useNavigate()
 
-  const [familyName, setFamilyName] = useState(family?.name ?? "")
-  const [municipality, setMunicipality] = useState(family?.municipality ?? "Zürich")
-  const [churchTax, setChurchTax] = useState(family?.churchTax ?? false)
-  const [adults, setAdults] = useState<FamilyMember[]>(family?.adults ?? [])
-  const [children, setChildren] = useState<FamilyMember[]>(family?.children ?? [])
+  const [familyName, setFamilyName] = useState("")
+  const [municipality, setMunicipality] = useState("Zürich")
+  const [churchTax, setChurchTax] = useState(false)
+  const [adults, setAdults] = useState<FamilyMember[]>([])
+  const [children, setChildren] = useState<FamilyMember[]>([])
   const [saving, setSaving] = useState(false)
+
+  // Sync local state when family data loads
+  useEffect(() => {
+    if (family) {
+      setFamilyName(family.name ?? "")
+      setMunicipality(family.municipality ?? "Zürich")
+      setChurchTax(family.churchTax ?? false)
+      setAdults(family.adults ?? [])
+      setChildren(family.children ?? [])
+    }
+  }, [family])
 
   const handleSave = async () => {
     setSaving(true)
