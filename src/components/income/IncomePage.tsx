@@ -18,7 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Trash2, Wallet, Briefcase, TrendingUp } from "lucide-react"
+import { Plus, Trash2, Wallet, Briefcase, TrendingUp, Pencil } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -35,10 +35,11 @@ import { formatCHF, formatDate } from "@/lib/formatters"
 import type { IncomeType } from "@/types"
 
 export function IncomePage() {
-  const { incomes, loading, addIncome, deleteIncome, totalAnnualGross, totalMonthlyGross } =
+  const { incomes, loading, addIncome, updateIncome, deleteIncome, totalAnnualGross, totalMonthlyGross } =
     useIncome()
   const { family } = useFamily()
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [editingId, setEditingId] = useState<string | null>(null)
 
   // Form state
   const [memberId, setMemberId] = useState(family?.adults[0]?.id ?? "")
@@ -51,6 +52,7 @@ export function IncomePage() {
   const [endDate, setEndDate] = useState("")
 
   const resetForm = () => {
+    setEditingId(null)
     setMemberId(family?.adults[0]?.id ?? "")
     setEmployer("")
     setJobTitle("")
@@ -61,38 +63,57 @@ export function IncomePage() {
     setEndDate("")
   }
 
-  const handleAdd = async () => {
+  const openEdit = (incId: string) => {
+    const inc = incomes.find((i) => i.id === incId)
+    if (!inc) return
+    setEditingId(incId)
+    setMemberId(inc.memberId)
+    setEmployer(inc.employer)
+    setJobTitle(inc.jobTitle ?? "")
+    setIncomeType(inc.type)
+    setAnnualGross(Number(inc.annualGross))
+    setBonus(Number(inc.bonus ?? 0))
+    setStartDate(inc.startDate ?? "")
+    setEndDate(inc.endDate ?? "")
+    setDialogOpen(true)
+  }
+
+  const handleSave = async () => {
     const effectiveMemberId = memberId || family?.adults[0]?.id || ""
-    console.log("handleAdd called", { effectiveMemberId, annualGross, employer, familyId: family?.id })
-    if (!effectiveMemberId) {
-      console.error("No member selected")
-      return
-    }
-    if (!annualGross) {
-      console.error("No salary entered")
-      return
-    }
+    if (!effectiveMemberId || !annualGross) return
     try {
-      const id = await addIncome({
-        memberId: effectiveMemberId,
-        employer,
-        jobTitle,
-        type: incomeType,
-        annualGross,
-        bonus,
-        startDate: startDate || new Date().toISOString().split("T")[0],
-        endDate: endDate || null,
-        isProjection: false,
-      })
-      console.log("Income saved with id:", id)
+      if (editingId) {
+        await updateIncome(editingId, {
+          memberId: effectiveMemberId,
+          employer,
+          jobTitle,
+          type: incomeType,
+          annualGross,
+          bonus,
+          startDate: startDate || new Date().toISOString().split("T")[0],
+          endDate: endDate || null,
+        })
+      } else {
+        await addIncome({
+          memberId: effectiveMemberId,
+          employer,
+          jobTitle,
+          type: incomeType,
+          annualGross,
+          bonus,
+          startDate: startDate || new Date().toISOString().split("T")[0],
+          endDate: endDate || null,
+          isProjection: false,
+        })
+      }
       setDialogOpen(false)
       resetForm()
     } catch (err) {
-      console.error("Failed to add income:", err)
+      console.error("Failed to save income:", err)
     }
   }
 
-  // Build chart data: annual income by year
+  // Chart data
   const chartData = (() => {
     const years: Record<string, number> = {}
     for (const inc of incomes) {
@@ -102,7 +123,7 @@ export function IncomePage() {
         ? new Date(inc.endDate).getFullYear()
         : new Date().getFullYear()
       for (let y = start; y <= end; y++) {
-        years[y] = (years[y] ?? 0) + inc.annualGross + (inc.bonus ?? 0)
+        years[y] = (years[y] ?? 0) + Number(inc.annualGross) + Number(inc.bonus ?? 0)
       }
     }
     return Object.entries(years)
@@ -121,7 +142,7 @@ export function IncomePage() {
             Track employment history and income for all family members.
           </p>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) resetForm() }}>
           <DialogTrigger asChild>
             <Button onClick={resetForm}>
               <Plus className="mr-2 h-4 w-4" />
@@ -130,7 +151,7 @@ export function IncomePage() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>Add Income Source</DialogTitle>
+              <DialogTitle>{editingId ? "Edit Income Source" : "Add Income Source"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
               <div className="space-y-2">
@@ -151,31 +172,18 @@ export function IncomePage() {
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Employer</Label>
-                  <Input
-                    value={employer}
-                    onChange={(e) => setEmployer(e.target.value)}
-                    placeholder="Company name"
-                  />
+                  <Input value={employer} onChange={(e) => setEmployer(e.target.value)} placeholder="Company name" />
                 </div>
                 <div className="space-y-2">
                   <Label>Job Title</Label>
-                  <Input
-                    value={jobTitle}
-                    onChange={(e) => setJobTitle(e.target.value)}
-                    placeholder="e.g. Software Engineer"
-                  />
+                  <Input value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="e.g. Software Engineer" />
                 </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Type</Label>
-                  <Select
-                    value={incomeType}
-                    onValueChange={(v) => setIncomeType(v as IncomeType)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
+                  <Select value={incomeType} onValueChange={(v) => setIncomeType(v as IncomeType)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="salary">Salary</SelectItem>
                       <SelectItem value="bonus">Bonus</SelectItem>
@@ -188,41 +196,25 @@ export function IncomePage() {
                 </div>
                 <div className="space-y-2">
                   <Label>Annual Gross (CHF)</Label>
-                  <Input
-                    type="number"
-                    value={annualGross || ""}
-                    onChange={(e) => setAnnualGross(Number(e.target.value))}
-                  />
+                  <Input type="number" value={annualGross || ""} onChange={(e) => setAnnualGross(Number(e.target.value))} />
                 </div>
               </div>
               <div className="space-y-2">
                 <Label>Annual Bonus (CHF)</Label>
-                <Input
-                  type="number"
-                  value={bonus || ""}
-                  onChange={(e) => setBonus(Number(e.target.value))}
-                />
+                <Input type="number" value={bonus || ""} onChange={(e) => setBonus(Number(e.target.value))} />
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Start Date</Label>
-                  <Input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                  />
+                  <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
                 </div>
                 <div className="space-y-2">
                   <Label>End Date (empty = current)</Label>
-                  <Input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                  />
+                  <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                 </div>
               </div>
-              <Button onClick={handleAdd} className="w-full">
-                Add Income Source
+              <Button onClick={handleSave} className="w-full">
+                {editingId ? "Save Changes" : "Add Income Source"}
               </Button>
             </div>
           </DialogContent>
@@ -233,9 +225,7 @@ export function IncomePage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Annual Gross
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Annual Gross</CardTitle>
             <Wallet className="h-4 w-4 text-green-600" />
           </CardHeader>
           <CardContent>
@@ -244,9 +234,7 @@ export function IncomePage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Monthly Gross
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Gross</CardTitle>
             <TrendingUp className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
@@ -255,9 +243,7 @@ export function IncomePage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Active Positions
-            </CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Active Positions</CardTitle>
             <Briefcase className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
@@ -268,7 +254,7 @@ export function IncomePage() {
         </Card>
       </div>
 
-      {/* Income history chart */}
+      {/* Chart */}
       {chartData.length > 0 && (
         <Card>
           <CardHeader>
@@ -283,12 +269,7 @@ export function IncomePage() {
                   <YAxis />
                   <Tooltip formatter={(v) => formatCHF(Number(v))} />
                   <Legend />
-                  <Bar
-                    dataKey="total"
-                    name="Total Income (CHF)"
-                    fill="#22c55e"
-                    radius={[4, 4, 0, 0]}
-                  />
+                  <Bar dataKey="total" name="Total Income (CHF)" fill="#22c55e" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -296,62 +277,52 @@ export function IncomePage() {
         </Card>
       )}
 
-      {/* Job history list */}
+      {/* Employment list */}
       <Card>
         <CardHeader>
           <CardTitle>Employment History</CardTitle>
         </CardHeader>
         <CardContent>
           {incomes.length === 0 ? (
-            <p className="text-muted-foreground">
-              No income records yet. Click &quot;Add Income&quot; to get started.
-            </p>
+            <p className="text-muted-foreground">No income records yet. Click &quot;Add Income&quot; to get started.</p>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {incomes.map((inc) => {
-                const memberName =
-                  family?.adults.find((a) => a.id === inc.memberId)?.name ?? "Unknown"
+                const memberName = family?.adults.find((a) => a.id === inc.memberId)?.name ?? "Unknown"
                 return (
                   <div
                     key={inc.id}
-                    className="flex items-center justify-between rounded-lg border p-4"
+                    className="flex items-center justify-between rounded-lg border p-4 hover:bg-muted/50 cursor-pointer"
+                    onClick={() => openEdit(inc.id)}
                   >
-                    <div className="space-y-1">
+                    <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{inc.employer}</span>
-                        {!inc.endDate && (
-                          <Badge variant="secondary" className="text-xs">
-                            Current
-                          </Badge>
-                        )}
-                        {inc.isProjection && (
-                          <Badge className="text-xs bg-blue-100 text-blue-700">
-                            Projected
-                          </Badge>
-                        )}
+                        {!inc.endDate && <Badge variant="secondary" className="text-xs">Current</Badge>}
+                        {inc.isProjection && <Badge className="text-xs bg-blue-100 text-blue-700">Projected</Badge>}
                       </div>
                       <p className="text-sm text-muted-foreground">
                         {inc.jobTitle && `${inc.jobTitle} · `}
-                        {memberName} ·{" "}
-                        {inc.startDate && formatDate(inc.startDate, "MMM yyyy")}
+                        {memberName}
+                        {inc.startDate && ` · ${formatDate(inc.startDate, "MMM yyyy")}`}
                         {inc.endDate && ` — ${formatDate(inc.endDate, "MMM yyyy")}`}
                       </p>
                     </div>
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-3 shrink-0">
                       <div className="text-right">
-                        <div className="font-medium">{formatCHF(inc.annualGross)}</div>
-                        {inc.bonus ? (
-                          <p className="text-xs text-muted-foreground">
-                            + {formatCHF(inc.bonus)} bonus
-                          </p>
-                        ) : null}
+                        <div className="font-medium">{formatCHF(Number(inc.annualGross))}</div>
+                        {Number(inc.bonus) > 0 && (
+                          <p className="text-xs text-muted-foreground">+ {formatCHF(Number(inc.bonus))} bonus</p>
+                        )}
                       </div>
+                      <Pencil className="h-4 w-4 text-muted-foreground" />
                       <Button
                         variant="ghost"
                         size="icon"
-                        onClick={() => deleteIncome(inc.id)}
+                        className="h-7 w-7"
+                        onClick={(e) => { e.stopPropagation(); deleteIncome(inc.id) }}
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <Trash2 className="h-3 w-3 text-destructive" />
                       </Button>
                     </div>
                   </div>

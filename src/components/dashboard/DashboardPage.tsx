@@ -13,6 +13,8 @@ import {
   PieChart,
   Pie,
   Cell,
+  AreaChart,
+  Area,
 } from "recharts"
 import { useIncome } from "@/hooks/useIncome"
 import { useExpenses } from "@/hooks/useExpenses"
@@ -72,6 +74,31 @@ export function DashboardPage() {
 
   // Top 5 expenses this month
   const topExpenses = monthlyByCategory.slice(0, 5)
+
+  // Budget-based monthly expenses (sum of all category budgets)
+  const totalMonthlyBudget = categories.reduce((s, c) => s + Number(c.monthlyBudget ?? 0), 0)
+  const effectiveMonthlyExpenses = totalMonthlyBudget > 0 ? totalMonthlyBudget : totalMonthlyExpenses
+
+  // 24-month outlook
+  const outlook24m = useMemo(() => {
+    const data: Array<{ month: string; netWorth: number; income: number; expenses: number; savings: number }> = []
+    let nw = netWorth.netWorth
+    for (let i = 0; i < 24; i++) {
+      const d = new Date()
+      d.setMonth(d.getMonth() + i)
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      const savings = monthlyNetIncome - effectiveMonthlyExpenses
+      nw += savings
+      data.push({
+        month: ym,
+        netWorth: Math.round(nw),
+        income: monthlyNetIncome,
+        expenses: effectiveMonthlyExpenses,
+        savings: Math.round(savings),
+      })
+    }
+    return data
+  }, [monthlyNetIncome, effectiveMonthlyExpenses, netWorth.netWorth])
 
   const hasData = incomes.length > 0 || expenses.length > 0 || assets.length > 0
 
@@ -296,6 +323,68 @@ export function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* 24-month outlook */}
+      {monthlyNetIncome > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>24-Month Outlook</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <AreaChart data={outlook24m}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
+                  <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
+                  <Tooltip formatter={(v) => formatCHF(Number(v))} />
+                  <Legend />
+                  <Area
+                    type="monotone"
+                    dataKey="netWorth"
+                    name="Net Worth"
+                    fill="#3b82f630"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="income"
+                    name="Monthly Income"
+                    fill="#22c55e20"
+                    stroke="#22c55e"
+                    strokeWidth={1}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="expenses"
+                    name="Monthly Expenses"
+                    fill="#ef444420"
+                    stroke="#ef4444"
+                    strokeWidth={1}
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-4 text-center text-sm">
+              <div>
+                <p className="text-muted-foreground">Monthly Savings</p>
+                <p className={`font-semibold ${monthlySavings >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {formatCHF(monthlyNetIncome - effectiveMonthlyExpenses)}
+                </p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Net Worth in 12m</p>
+                <p className="font-semibold">{formatCHF(outlook24m[11]?.netWorth ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Net Worth in 24m</p>
+                <p className="font-semibold">{formatCHF(outlook24m[23]?.netWorth ?? 0)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   )
