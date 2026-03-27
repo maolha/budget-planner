@@ -25,7 +25,7 @@ import { calculateNetWorth } from "@/engine/net-worth/net-worth-calculator"
 import { formatCHF, formatPercent } from "@/lib/formatters"
 
 export function DashboardPage() {
-  const { totalAnnualGross, incomes, loading: incomeLoading, error: incomeError } = useIncome()
+  const { totalAnnualGross, incomes, incomeTimeline, loading: incomeLoading, error: incomeError } = useIncome()
   const { expenses, categories, totalMonthlyExpenses, totalMonthlyBudget, loading: expenseLoading, error: expenseError } = useExpenses()
   const { assets, loading: assetLoading, error: assetError } = useAssets()
   const { family, loading: familyLoading } = useFamily()
@@ -93,26 +93,31 @@ export function DashboardPage() {
   // Top 5 expenses this month
   const topExpenses = monthlyByCategory.slice(0, 5)
 
-  // 24-month outlook
+  // 24-month outlook with bonus timing
   const outlook24m = useMemo(() => {
-    const data: Array<{ month: string; netWorth: number; income: number; expenses: number; savings: number }> = []
+    const data: Array<{ month: string; netWorth: number; baseIncome: number; bonusIncome: number; income: number; expenses: number; savings: number }> = []
     let nw = netWorth.netWorth
     for (let i = 0; i < 24; i++) {
-      const d = new Date()
-      d.setMonth(d.getMonth() + i)
-      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
-      const savings = monthlyNetIncome - effectiveMonthlyExpenses
+      const tl = incomeTimeline[i]
+      if (!tl) break
+      const grossIncome = tl.totalIncome
+      // Approximate tax ratio from annual figures
+      const taxRatio = totalAnnualGross > 0 ? taxResult.total / totalAnnualGross : 0
+      const netIncome = Math.round(grossIncome * (1 - taxRatio))
+      const savings = netIncome - effectiveMonthlyExpenses
       nw += savings
       data.push({
-        month: ym,
+        month: tl.month,
         netWorth: Math.round(nw),
-        income: monthlyNetIncome,
+        baseIncome: Math.round(tl.baseIncome * (1 - taxRatio)),
+        bonusIncome: Math.round(tl.bonusIncome * (1 - taxRatio)),
+        income: netIncome,
         expenses: effectiveMonthlyExpenses,
         savings: Math.round(savings),
       })
     }
     return data
-  }, [monthlyNetIncome, effectiveMonthlyExpenses, netWorth.netWorth])
+  }, [incomeTimeline, taxResult.total, totalAnnualGross, effectiveMonthlyExpenses, netWorth.netWorth])
 
   const hasData = incomes.length > 0 || expenses.length > 0 || assets.length > 0
 
@@ -386,11 +391,21 @@ export function DashboardPage() {
                   />
                   <Area
                     type="monotone"
-                    dataKey="income"
-                    name="Monthly Income"
+                    dataKey="baseIncome"
+                    name="Base Income"
                     fill="#22c55e20"
                     stroke="#22c55e"
                     strokeWidth={1}
+                    stackId="income"
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="bonusIncome"
+                    name="Bonus"
+                    fill="#f59e0b40"
+                    stroke="#f59e0b"
+                    strokeWidth={1}
+                    stackId="income"
                   />
                   <Area
                     type="monotone"

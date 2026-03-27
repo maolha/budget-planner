@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useMemo } from "react"
 import {
   collection,
   doc,
@@ -91,6 +91,47 @@ export function useIncome() {
 
   const totalMonthlyGross = Math.round(totalAnnualGross / 12)
 
+  // Build a 24-month cash flow timeline with bonus payout timing
+  const incomeTimeline = useMemo(() => {
+    const timeline: Array<{
+      month: string       // YYYY-MM
+      baseIncome: number  // monthly salary (gross)
+      bonusIncome: number // bonus paid this month (gross)
+      totalIncome: number
+    }> = []
+
+    for (let i = 0; i < 24; i++) {
+      const d = new Date()
+      d.setMonth(d.getMonth() + i)
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      const calMonth = d.getMonth() + 1 // 1-12
+
+      let baseIncome = 0
+      let bonusIncome = 0
+
+      for (const inc of currentIncomes) {
+        const monthlyBase = Math.round(Number(inc.annualGross || 0) / 12)
+        baseIncome += monthlyBase
+
+        const bonus = Number(inc.bonus || 0)
+        if (bonus <= 0) continue
+
+        const freq = inc.bonusFrequency ?? "annual"
+        const payoutMonths = inc.bonusPayoutMonths?.length
+          ? inc.bonusPayoutMonths
+          : getDefaultPayoutMonths(freq)
+
+        if (payoutMonths.includes(calMonth)) {
+          bonusIncome += Math.round(bonus / payoutMonths.length)
+        }
+      }
+
+      timeline.push({ month: ym, baseIncome, bonusIncome, totalIncome: baseIncome + bonusIncome })
+    }
+
+    return timeline
+  }, [currentIncomes])
+
   return {
     incomes,
     loading,
@@ -100,5 +141,16 @@ export function useIncome() {
     deleteIncome,
     totalAnnualGross,
     totalMonthlyGross,
+    incomeTimeline,
+  }
+}
+
+function getDefaultPayoutMonths(freq: string): number[] {
+  switch (freq) {
+    case "monthly": return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    case "quarterly": return [3, 6, 9, 12]
+    case "semi-annual": return [6, 12]
+    case "annual": return [12]
+    default: return [12]
   }
 }

@@ -32,7 +32,19 @@ import {
 import { useIncome } from "@/hooks/useIncome"
 import { useFamily } from "@/hooks/useFamily"
 import { formatCHF, formatDate } from "@/lib/formatters"
-import type { IncomeType } from "@/types"
+import type { IncomeType, BonusFrequency } from "@/types"
+
+const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+function getDefaultPayoutMonths(freq: BonusFrequency): number[] {
+  switch (freq) {
+    case "monthly": return [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    case "quarterly": return [3, 6, 9, 12]
+    case "semi-annual": return [6, 12]
+    case "annual": return [12]
+    default: return []
+  }
+}
 
 export function IncomePage() {
   const { incomes, loading, error, addIncome, updateIncome, deleteIncome, totalAnnualGross, totalMonthlyGross } =
@@ -48,6 +60,8 @@ export function IncomePage() {
   const [incomeType, setIncomeType] = useState<IncomeType>("salary")
   const [annualGross, setAnnualGross] = useState(0)
   const [bonus, setBonus] = useState(0)
+  const [bonusFrequency, setBonusFrequency] = useState<BonusFrequency>("annual")
+  const [bonusPayoutMonths, setBonusPayoutMonths] = useState<number[]>([12])
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
 
@@ -59,6 +73,8 @@ export function IncomePage() {
     setIncomeType("salary")
     setAnnualGross(0)
     setBonus(0)
+    setBonusFrequency("annual")
+    setBonusPayoutMonths([12])
     setStartDate("")
     setEndDate("")
   }
@@ -73,38 +89,44 @@ export function IncomePage() {
     setIncomeType(inc.type)
     setAnnualGross(Number(inc.annualGross))
     setBonus(Number(inc.bonus ?? 0))
+    setBonusFrequency(inc.bonusFrequency ?? "annual")
+    setBonusPayoutMonths(inc.bonusPayoutMonths ?? getDefaultPayoutMonths(inc.bonusFrequency ?? "annual"))
     setStartDate(inc.startDate ?? "")
     setEndDate(inc.endDate ?? "")
     setDialogOpen(true)
+  }
+
+  const handleFrequencyChange = (freq: BonusFrequency) => {
+    setBonusFrequency(freq)
+    setBonusPayoutMonths(getDefaultPayoutMonths(freq))
+  }
+
+  const togglePayoutMonth = (month: number) => {
+    setBonusPayoutMonths((prev) =>
+      prev.includes(month) ? prev.filter((m) => m !== month) : [...prev, month].sort((a, b) => a - b)
+    )
   }
 
   const handleSave = async () => {
     const effectiveMemberId = memberId || family?.adults[0]?.id || ""
     if (!effectiveMemberId || !annualGross) return
     try {
+      const incomeData = {
+        memberId: effectiveMemberId,
+        employer,
+        jobTitle,
+        type: incomeType,
+        annualGross,
+        bonus,
+        bonusFrequency: bonus > 0 ? bonusFrequency : ("none" as BonusFrequency),
+        bonusPayoutMonths: bonus > 0 ? bonusPayoutMonths : [],
+        startDate: startDate || new Date().toISOString().split("T")[0],
+        endDate: endDate || null,
+      }
       if (editingId) {
-        await updateIncome(editingId, {
-          memberId: effectiveMemberId,
-          employer,
-          jobTitle,
-          type: incomeType,
-          annualGross,
-          bonus,
-          startDate: startDate || new Date().toISOString().split("T")[0],
-          endDate: endDate || null,
-        })
+        await updateIncome(editingId, incomeData)
       } else {
-        await addIncome({
-          memberId: effectiveMemberId,
-          employer,
-          jobTitle,
-          type: incomeType,
-          annualGross,
-          bonus,
-          startDate: startDate || new Date().toISOString().split("T")[0],
-          endDate: endDate || null,
-          isProjection: false,
-        })
+        await addIncome({ ...incomeData, isProjection: false })
       }
       setDialogOpen(false)
       resetForm()
@@ -212,6 +234,48 @@ export function IncomePage() {
                 <Label>Annual Bonus (CHF)</Label>
                 <Input type="number" value={bonus || ""} onChange={(e) => setBonus(Number(e.target.value))} />
               </div>
+              {bonus > 0 && (
+                <>
+                  <div className="space-y-2">
+                    <Label>Bonus Frequency</Label>
+                    <Select value={bonusFrequency} onValueChange={(v) => handleFrequencyChange(v as BonusFrequency)}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="annual">Annual</SelectItem>
+                        <SelectItem value="semi-annual">Semi-Annual</SelectItem>
+                        <SelectItem value="quarterly">Quarterly</SelectItem>
+                        <SelectItem value="monthly">Monthly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Payout Months</Label>
+                    <div className="flex flex-wrap gap-1">
+                      {MONTH_LABELS.map((label, idx) => {
+                        const month = idx + 1
+                        const selected = bonusPayoutMonths.includes(month)
+                        return (
+                          <Button
+                            key={month}
+                            type="button"
+                            variant={selected ? "default" : "outline"}
+                            size="sm"
+                            className="h-7 w-10 px-0 text-xs"
+                            onClick={() => togglePayoutMonth(month)}
+                          >
+                            {label}
+                          </Button>
+                        )
+                      })}
+                    </div>
+                    {bonusPayoutMonths.length > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {formatCHF(Math.round(bonus / bonusPayoutMonths.length))} per payout
+                      </p>
+                    )}
+                  </div>
+                </>
+              )}
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Start Date</Label>
@@ -324,7 +388,10 @@ export function IncomePage() {
                       <div className="text-right">
                         <div className="font-medium">{formatCHF(Number(inc.annualGross))}</div>
                         {Number(inc.bonus) > 0 && (
-                          <p className="text-xs text-muted-foreground">+ {formatCHF(Number(inc.bonus))} bonus</p>
+                          <p className="text-xs text-muted-foreground">
+                            + {formatCHF(Number(inc.bonus))} bonus
+                            {inc.bonusFrequency && inc.bonusFrequency !== "none" && ` (${inc.bonusFrequency}${inc.bonusPayoutMonths?.length ? `: ${inc.bonusPayoutMonths.map((m) => MONTH_LABELS[m - 1]).join(", ")}` : ""})`}
+                          </p>
                         )}
                       </div>
                       <Pencil className="h-4 w-4 text-muted-foreground" />
