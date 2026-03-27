@@ -92,6 +92,7 @@ export function useIncome() {
   const totalMonthlyGross = Math.round(totalAnnualGross / 12)
 
   // Build a 24-month cash flow timeline with bonus payout timing
+  // Records with no endDate project indefinitely; records with endDate stop when it's passed
   const incomeTimeline = useMemo(() => {
     const timeline: Array<{
       month: string       // YYYY-MM
@@ -110,6 +111,9 @@ export function useIncome() {
       let bonusIncome = 0
 
       for (const inc of currentIncomes) {
+        // Skip if this income has ended before this month
+        if (inc.endDate && inc.endDate < ym) continue
+
         const monthlyBase = Math.round(Number(inc.annualGross || 0) / 12)
         baseIncome += monthlyBase
 

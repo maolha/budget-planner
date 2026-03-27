@@ -18,7 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Trash2, TrendingUp, TrendingDown, Landmark, PiggyBank } from "lucide-react"
+import { Plus, Trash2, TrendingUp, TrendingDown, Landmark, PiggyBank, Check, X } from "lucide-react"
 import {
   PieChart,
   Pie,
@@ -49,8 +49,46 @@ const TYPE_COLORS: Record<string, string> = {
   other_illiquid: "#94a3b8",
 }
 
+function EditableValue({ value, onSave }: { value: number; onSave: (v: number) => void }) {
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(value)
+
+  if (!editing) {
+    return (
+      <button
+        className="font-medium hover:underline cursor-pointer"
+        onClick={() => { setDraft(value); setEditing(true) }}
+      >
+        {formatCHF(value)}
+      </button>
+    )
+  }
+
+  return (
+    <div className="flex items-center gap-1">
+      <Input
+        type="number"
+        value={draft || ""}
+        onChange={(e) => setDraft(Number(e.target.value))}
+        className="h-7 w-28 text-sm text-right"
+        autoFocus
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { onSave(draft); setEditing(false) }
+          if (e.key === "Escape") setEditing(false)
+        }}
+      />
+      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => { onSave(draft); setEditing(false) }}>
+        <Check className="h-3 w-3 text-green-600" />
+      </Button>
+      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setEditing(false)}>
+        <X className="h-3 w-3 text-muted-foreground" />
+      </Button>
+    </div>
+  )
+}
+
 export function AssetsPage() {
-  const { assets, loading, addAsset, deleteAsset } = useAssets()
+  const { assets, loading, addAsset, updateAssetValue, deleteAsset } = useAssets()
   const [dialogOpen, setDialogOpen] = useState(false)
 
   // Form state
@@ -123,7 +161,7 @@ export function AssetsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Assets & Net Worth</h1>
           <p className="text-muted-foreground">
-            Track your complete financial picture: assets, liabilities, and net worth.
+            Track your complete financial picture. Click any value to update it.
           </p>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
@@ -261,12 +299,13 @@ export function AssetsPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              Asset Count
+              Cash Balance
             </CardTitle>
             <PiggyBank className="h-4 w-4 text-purple-600" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{assets.length}</div>
+            <div className="text-2xl font-bold">{formatCHF(netWorth.breakdown.liquid)}</div>
+            <p className="text-xs text-muted-foreground">liquid assets</p>
           </CardContent>
         </Card>
       </div>
@@ -336,7 +375,7 @@ export function AssetsPage() {
         </Card>
       </div>
 
-      {/* Asset list grouped by type */}
+      {/* Asset list grouped by type — inline editable values */}
       {grouped.map((group) => (
         <Card key={group.type}>
           <CardHeader>
@@ -353,36 +392,52 @@ export function AssetsPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-2">
-              {group.items.map((asset) => (
-                <div
-                  key={asset.id}
-                  className="flex items-center justify-between rounded-lg border p-3"
-                >
-                  <div>
-                    <p className="font-medium">{asset.name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {asset.institution}
-                      {asset.mortgageBalance
-                        ? ` · Mortgage: ${formatCHF(asset.mortgageBalance)}`
-                        : ""}
-                      {asset.annualReturnRate
-                        ? ` · Return: ${asset.annualReturnRate}%`
-                        : ""}
-                    </p>
+              {group.items.map((asset) => {
+                const history = asset.valueHistory ?? []
+                const prevEntry = history.length >= 2 ? history[history.length - 2] : null
+                const change = prevEntry ? asset.currentValue - prevEntry.value : null
+                return (
+                  <div
+                    key={asset.id}
+                    className="flex items-center justify-between rounded-lg border p-3"
+                  >
+                    <div className="min-w-0">
+                      <p className="font-medium">{asset.name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {asset.institution}
+                        {asset.mortgageBalance
+                          ? ` · Mortgage: ${formatCHF(asset.mortgageBalance)}`
+                          : ""}
+                        {asset.annualReturnRate
+                          ? ` · Return: ${asset.annualReturnRate}%`
+                          : ""}
+                        {history.length > 1 && ` · ${history.length} updates`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 shrink-0">
+                      <div className="text-right">
+                        <EditableValue
+                          value={asset.currentValue}
+                          onSave={(v) => updateAssetValue(asset.id, v)}
+                        />
+                        {change !== null && (
+                          <p className={`text-xs ${change >= 0 ? "text-green-600" : "text-red-600"}`}>
+                            {change >= 0 ? "+" : ""}{formatCHF(change)}
+                          </p>
+                        )}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        onClick={() => deleteAsset(asset.id)}
+                      >
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-medium">{formatCHF(asset.currentValue)}</span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7"
-                      onClick={() => deleteAsset(asset.id)}
-                    >
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </CardContent>
         </Card>

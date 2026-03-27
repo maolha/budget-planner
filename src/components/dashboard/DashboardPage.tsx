@@ -1,6 +1,6 @@
 import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Wallet, ArrowDownUp, PiggyBank, TrendingUp, Landmark, AlertCircle, Loader2 } from "lucide-react"
+import { Wallet, ArrowDownUp, PiggyBank, TrendingUp, Landmark, AlertCircle, Loader2, Banknote } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -15,6 +15,9 @@ import {
   Cell,
   AreaChart,
   Area,
+  ComposedChart,
+  Line,
+  ReferenceLine,
 } from "recharts"
 import { useIncome } from "@/hooks/useIncome"
 import { useExpenses } from "@/hooks/useExpenses"
@@ -48,6 +51,8 @@ export function DashboardPage() {
 
   const monthlyNetIncome = Math.round((totalAnnualGross - taxResult.total) / 12)
   const netWorth = useMemo(() => calculateNetWorth(assets), [assets])
+  const cashBalance = netWorth.breakdown.liquid
+  const taxRatio = totalAnnualGross > 0 ? taxResult.total / totalAnnualGross : 0
 
   // Use budget when no actual transactions recorded; otherwise use actual spend
   const effectiveMonthlyExpenses = totalMonthlyBudget > 0 ? totalMonthlyBudget : totalMonthlyExpenses
@@ -55,7 +60,7 @@ export function DashboardPage() {
   const monthlySavings = monthlyNetIncome - effectiveMonthlyExpenses
   const savingsRate = monthlyNetIncome > 0 ? monthlySavings / monthlyNetIncome : 0
 
-  // Spending by category (this month actual, or budget if no transactions)
+  // Budget by category (for pie chart)
   const now = new Date()
   const currentYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`
   const hasTransactions = expenses.some((e) => e.date.substring(0, 7) === currentYM)
@@ -71,7 +76,6 @@ export function DashboardPage() {
       .filter((d) => d.value > 0)
       .sort((a, b) => b.value - a.value)
 
-    // Show top 5, group the rest into "Other"
     if (all.length <= 6) return all
     const top = all.slice(0, 5)
     const rest = all.slice(5)
@@ -79,45 +83,51 @@ export function DashboardPage() {
     return [...top, { name: "Other", value: otherValue, color: "#94a3b8" }]
   })()
 
-  // Monthly spending trend (last 6 months) — use budget as baseline when no transactions
-  const spendingTrend = Array.from({ length: 6 }, (_, i) => {
-    const d = new Date()
-    d.setMonth(d.getMonth() - (5 - i))
-    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
-    const actual = expenses
-      .filter((e) => e.date.substring(0, 7) === ym)
-      .reduce((s, e) => s + e.amount, 0)
-    return { month: ym, expenses: actual || effectiveMonthlyExpenses, income: monthlyNetIncome }
-  })
+  // 24-month rolling cash flow outlook (primary view)
+  const cashFlowOutlook = useMemo(() => {
+    const data: Array<{
+      month: string
+      cashBalance: number
+      netWorth: number
+      netIncome: number   // base income net of tax
+      bonusIncome: number // bonus net of tax
+      expenses: number
+      cashFlow: number    // net income + bonus - expenses
+    }> = []
 
-  // Top 5 expenses this month
-  const topExpenses = monthlyByCategory.slice(0, 5)
+    let runningCash = cashBalance
+    let runningNW = netWorth.netWorth
 
-  // 24-month outlook with bonus timing
-  const outlook24m = useMemo(() => {
-    const data: Array<{ month: string; netWorth: number; baseIncome: number; bonusIncome: number; income: number; expenses: number; savings: number }> = []
-    let nw = netWorth.netWorth
+    // Estimate monthly asset growth from investments
+    const investmentAssets = assets.filter((a) => a.type === "investment" || a.type === "crypto")
+    const monthlyAssetGrowth = investmentAssets.reduce((sum, a) => {
+      const rate = a.annualReturnRate ?? 0
+      return sum + (a.currentValue * rate / 100 / 12)
+    }, 0)
+
     for (let i = 0; i < 24; i++) {
       const tl = incomeTimeline[i]
       if (!tl) break
-      const grossIncome = tl.totalIncome
-      // Approximate tax ratio from annual figures
-      const taxRatio = totalAnnualGross > 0 ? taxResult.total / totalAnnualGross : 0
-      const netIncome = Math.round(grossIncome * (1 - taxRatio))
-      const savings = netIncome - effectiveMonthlyExpenses
-      nw += savings
+
+      const netBase = Math.round(tl.baseIncome * (1 - taxRatio))
+      const netBonus = Math.round(tl.bonusIncome * (1 - taxRatio))
+      const cashFlow = netBase + netBonus - effectiveMonthlyExpenses
+
+      runningCash += cashFlow
+      runningNW += cashFlow + Math.round(monthlyAssetGrowth)
+
       data.push({
         month: tl.month,
-        netWorth: Math.round(nw),
-        baseIncome: Math.round(tl.baseIncome * (1 - taxRatio)),
-        bonusIncome: Math.round(tl.bonusIncome * (1 - taxRatio)),
-        income: netIncome,
+        cashBalance: Math.round(runningCash),
+        netWorth: Math.round(runningNW),
+        netIncome: netBase,
+        bonusIncome: netBonus,
         expenses: effectiveMonthlyExpenses,
-        savings: Math.round(savings),
+        cashFlow: Math.round(cashFlow),
       })
     }
     return data
-  }, [incomeTimeline, taxResult.total, totalAnnualGross, effectiveMonthlyExpenses, netWorth.netWorth])
+  }, [incomeTimeline, taxRatio, effectiveMonthlyExpenses, cashBalance, netWorth.netWorth, assets])
 
   const hasData = incomes.length > 0 || expenses.length > 0 || assets.length > 0
 
@@ -135,8 +145,8 @@ export function DashboardPage() {
         <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
         <p className="text-muted-foreground">
           {family?.name
-            ? `${family.name}'s financial overview`
-            : "Your family's financial overview at a glance."}
+            ? `${family.name}'s 24-month financial outlook`
+            : "Your family's 24-month financial outlook."}
         </p>
       </div>
 
@@ -153,7 +163,19 @@ export function DashboardPage() {
       )}
 
       {/* Summary cards */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">
+              Cash Balance
+            </CardTitle>
+            <Banknote className="h-4 w-4 text-blue-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{formatCHF(cashBalance)}</div>
+            <p className="text-xs text-muted-foreground">liquid assets</p>
+          </CardContent>
+        </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
@@ -236,31 +258,102 @@ export function DashboardPage() {
         </Card>
       )}
 
+      {/* Primary: 24-month cash flow outlook */}
+      {hasData && monthlyNetIncome > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>24-Month Cash Flow Outlook</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-96">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={cashFlowOutlook}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
+                  <YAxis
+                    yAxisId="balance"
+                    tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                  />
+                  <YAxis
+                    yAxisId="flow"
+                    orientation="right"
+                    tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`}
+                  />
+                  <Tooltip formatter={(v) => formatCHF(Number(v))} />
+                  <Legend />
+                  <ReferenceLine yAxisId="flow" y={0} stroke="#666" strokeDasharray="3 3" />
+                  <Area
+                    yAxisId="balance"
+                    type="monotone"
+                    dataKey="cashBalance"
+                    name="Cash Balance"
+                    fill="#3b82f620"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                  />
+                  <Area
+                    yAxisId="balance"
+                    type="monotone"
+                    dataKey="netWorth"
+                    name="Net Worth"
+                    fill="#8b5cf610"
+                    stroke="#8b5cf6"
+                    strokeWidth={2}
+                    strokeDasharray="5 5"
+                  />
+                  <Bar
+                    yAxisId="flow"
+                    dataKey="netIncome"
+                    name="Net Income"
+                    fill="#22c55e"
+                    radius={[2, 2, 0, 0]}
+                    stackId="inflow"
+                  />
+                  <Bar
+                    yAxisId="flow"
+                    dataKey="bonusIncome"
+                    name="Bonus"
+                    fill="#f59e0b"
+                    radius={[2, 2, 0, 0]}
+                    stackId="inflow"
+                  />
+                  <Line
+                    yAxisId="flow"
+                    type="monotone"
+                    dataKey="expenses"
+                    name="Expenses"
+                    stroke="#ef4444"
+                    strokeWidth={2}
+                    dot={false}
+                  />
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4 text-center text-sm">
+              <div>
+                <p className="text-muted-foreground">Cash in 12m</p>
+                <p className="font-semibold">{formatCHF(cashFlowOutlook[11]?.cashBalance ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Cash in 24m</p>
+                <p className="font-semibold">{formatCHF(cashFlowOutlook[23]?.cashBalance ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Net Worth in 12m</p>
+                <p className="font-semibold">{formatCHF(cashFlowOutlook[11]?.netWorth ?? 0)}</p>
+              </div>
+              <div>
+                <p className="text-muted-foreground">Net Worth in 24m</p>
+                <p className="font-semibold">{formatCHF(cashFlowOutlook[23]?.netWorth ?? 0)}</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {hasData && (
         <div className="grid gap-6 lg:grid-cols-2">
-          {/* Income vs Expenses trend */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Income vs Expenses (Last 6 Months)</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={spendingTrend}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                    <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                    <Tooltip formatter={(v) => formatCHF(Number(v))} />
-                    <Legend />
-                    <Bar dataKey="income" name="Income" fill="#22c55e" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="expenses" name="Expenses" fill="#ef4444" radius={[4, 4, 0, 0]} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Spending by category */}
+          {/* Budget / Spending breakdown */}
           <Card>
             <CardHeader>
               <CardTitle>{hasTransactions ? "Spending by Category" : "Budget by Category"}</CardTitle>
@@ -293,33 +386,6 @@ export function DashboardPage() {
                   </div>
                 )}
               </div>
-            </CardContent>
-          </Card>
-
-          {/* Top expenses */}
-          <Card>
-            <CardHeader>
-              <CardTitle>{hasTransactions ? "Top Expenses This Month" : "Top Budget Categories"}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {topExpenses.length > 0 ? (
-                <div className="space-y-3">
-                  {topExpenses.map((exp) => (
-                    <div key={exp.name} className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="h-3 w-3 rounded-full"
-                          style={{ backgroundColor: exp.color }}
-                        />
-                        <span className="text-sm">{exp.name}</span>
-                      </div>
-                      <span className="font-medium">{formatCHF(exp.value)}</span>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-muted-foreground">No expenses recorded this month.</p>
-              )}
             </CardContent>
           </Card>
 
@@ -364,78 +430,6 @@ export function DashboardPage() {
             </CardContent>
           </Card>
         </div>
-      )}
-
-      {/* 24-month outlook */}
-      {monthlyNetIncome > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>24-Month Outlook</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={outlook24m}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
-                  <YAxis tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                  <Tooltip formatter={(v) => formatCHF(Number(v))} />
-                  <Legend />
-                  <Area
-                    type="monotone"
-                    dataKey="netWorth"
-                    name="Net Worth"
-                    fill="#3b82f630"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="baseIncome"
-                    name="Base Income"
-                    fill="#22c55e20"
-                    stroke="#22c55e"
-                    strokeWidth={1}
-                    stackId="income"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="bonusIncome"
-                    name="Bonus"
-                    fill="#f59e0b40"
-                    stroke="#f59e0b"
-                    strokeWidth={1}
-                    stackId="income"
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey="expenses"
-                    name="Monthly Expenses"
-                    fill="#ef444420"
-                    stroke="#ef4444"
-                    strokeWidth={1}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-            <div className="mt-3 grid grid-cols-3 gap-4 text-center text-sm">
-              <div>
-                <p className="text-muted-foreground">Monthly Savings</p>
-                <p className={`font-semibold ${monthlySavings >= 0 ? "text-green-600" : "text-red-600"}`}>
-                  {formatCHF(monthlyNetIncome - effectiveMonthlyExpenses)}
-                </p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Net Worth in 12m</p>
-                <p className="font-semibold">{formatCHF(outlook24m[11]?.netWorth ?? 0)}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Net Worth in 24m</p>
-                <p className="font-semibold">{formatCHF(outlook24m[23]?.netWorth ?? 0)}</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       )}
     </div>
   )

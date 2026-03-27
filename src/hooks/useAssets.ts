@@ -7,6 +7,7 @@ import {
   onSnapshot,
   serverTimestamp,
   query,
+  arrayUnion,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useAuthStore } from "@/store"
@@ -75,6 +76,23 @@ export function useAssets() {
     [familyId]
   )
 
+  const updateAssetValue = useCallback(
+    async (id: string, newValue: number) => {
+      if (!familyId) throw new Error("No family")
+      const today = new Date().toISOString().split("T")[0]
+      await setDoc(
+        doc(db, "families", familyId, "assets", id),
+        {
+          currentValue: newValue,
+          valueHistory: arrayUnion({ date: today, value: newValue }),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+    },
+    [familyId]
+  )
+
   const deleteAsset = useCallback(
     async (id: string) => {
       if (!familyId) throw new Error("No family")
@@ -83,5 +101,5 @@ export function useAssets() {
     [familyId]
   )
 
-  return { assets, loading, error, addAsset, updateAsset, deleteAsset }
+  return { assets, loading, error, addAsset, updateAsset, updateAssetValue, deleteAsset }
 }
