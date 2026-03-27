@@ -81,7 +81,7 @@ export function IncomePage() {
         annualGross,
         bonus,
         startDate: startDate || new Date().toISOString().split("T")[0],
-        endDate: endDate || undefined,
+        endDate: endDate || null,
         isProjection: false,
       })
       console.log("Income saved with id:", id)

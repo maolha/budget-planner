@@ -12,7 +12,7 @@ export interface IncomeRecord {
   annualNet?: number
   bonus?: number
   startDate: string
-  endDate?: string
+  endDate?: string | null
   isProjection: boolean
   scenarioId?: string
   createdAt: Timestamp
