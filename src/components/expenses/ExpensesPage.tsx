@@ -4,7 +4,6 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
-import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   Select,
@@ -39,8 +38,8 @@ import { useFamily } from "@/hooks/useFamily"
 import { calculateBudgetRecommendation } from "@/engine/budget/recommendation-engine"
 import { calculateTaxSimple } from "@/engine/tax/tax-engine"
 import { formatCHF } from "@/lib/formatters"
+import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/constants"
 
-const PRIORITY_LABELS = ["Skip", "Low", "Below Avg", "Medium", "Above Avg", "High"]
 const PRIORITY_COLORS = [
   "bg-gray-200 text-gray-700",
   "bg-green-100 text-green-700",
@@ -270,106 +269,145 @@ export function ExpensesPage() {
 
         {/* Budget & Priorities tab */}
         <TabsContent value="budget" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Category Priorities & Recommended Budget</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {categories.map((cat) => {
-                  const rec = recommendation.categories.find(
-                    (r) => r.categoryName === cat.name
-                  )
+          {(() => {
+            // Group categories
+            const GROUPS = [
+              { label: "Fixkosten", icon: "🏠", keys: ["housing", "health_insurance", "childcare", "taxes", "pension_3a", "bvg"] },
+              { label: "Alltag", icon: "🛒", keys: ["groceries", "household", "personal_expenses", "communication"] },
+              { label: "Lifestyle", icon: "✨", keys: ["restaurants", "holidays", "leisure", "personal_care", "clothing", "gifts"] },
+              { label: "Mobilität & Sonstiges", icon: "🚗", keys: ["transport", "car", "investments", "other"] },
+            ]
+
+            const findCatByKey = (key: string) =>
+              categories.find((c) => {
+                const catKey = c.name.toLowerCase().replace(/[^a-z0-9äöü]+/g, "_")
+                // Match by key lookup from defaults
+                const match = DEFAULT_EXPENSE_CATEGORIES.find((d) => d.name === c.name)
+                return match?.key === key || catKey.includes(key)
+              })
+
+            const leftGroups = GROUPS.slice(0, 2)
+            const rightGroups = GROUPS.slice(2)
+
+            const renderGroup = (group: typeof GROUPS[0]) => {
+              const groupCats = group.keys
+                .map((key) => {
+                  const cat = findCatByKey(key)
+                  if (!cat) return null
+                  const rec = recommendation.categories.find((r) => r.categoryName === cat.name)
                   const actual = monthlyTotals[cat.id] ?? 0
                   const recommended = rec?.recommendedMonthly ?? 0
                   const budget = cat.monthlyBudget ?? 0
                   const effectiveBudget = budget || recommended
                   const isOverBudget = actual > effectiveBudget && effectiveBudget > 0
+                  return { cat, rec, actual, recommended, budget, effectiveBudget, isOverBudget }
+                })
+                .filter(Boolean) as Array<{
+                  cat: typeof categories[0]
+                  actual: number
+                  recommended: number
+                  budget: number
+                  effectiveBudget: number
+                  isOverBudget: boolean
+                }>
 
-                  return (
-                    <div key={cat.id} className="space-y-2 rounded-lg border p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-3 w-3 rounded-full"
-                            style={{ backgroundColor: cat.color }}
-                          />
-                          <span className="font-medium">{cat.name}</span>
-                          {cat.isFixed && (
-                            <Badge variant="secondary" className="text-xs">
-                              Fixed
-                            </Badge>
-                          )}
-                        </div>
-                        <span className={`text-sm ${isOverBudget ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
-                          Spent: {formatCHF(actual)}
+              const groupTotal = groupCats.reduce((s, g) => s + (g.budget || g.recommended), 0)
+              const groupSpent = groupCats.reduce((s, g) => s + g.actual, 0)
+
+              return (
+                <Card key={group.label}>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center justify-between text-base">
+                      <span>{group.icon} {group.label}</span>
+                      <div className="flex gap-3 text-xs font-normal text-muted-foreground">
+                        <span>Budget: {formatCHF(groupTotal)}</span>
+                        <span className={groupSpent > groupTotal && groupTotal > 0 ? "text-red-600 font-medium" : ""}>
+                          Spent: {formatCHF(groupSpent)}
                         </span>
                       </div>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {groupCats.map(({ cat, actual, recommended, budget, effectiveBudget, isOverBudget }) => (
+                      <div key={cat.id} className="space-y-1.5 rounded-md border p-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-2.5 w-2.5 rounded-full"
+                              style={{ backgroundColor: cat.color }}
+                            />
+                            <span className="text-sm font-medium">{cat.name}</span>
+                          </div>
+                          <span className={`text-xs ${isOverBudget ? "text-red-600 font-medium" : "text-muted-foreground"}`}>
+                            {formatCHF(actual)}
+                          </span>
+                        </div>
 
-                      {/* Budget input: recommended suggestion with accept/override */}
-                      <div className="flex items-center gap-3">
-                        <div className="flex items-center gap-2 flex-1">
-                          <Label className="text-xs text-muted-foreground whitespace-nowrap w-16">Budget</Label>
+                        <div className="flex items-center gap-2">
                           <Input
                             type="number"
                             value={budget || ""}
                             onChange={(e) => updateCategoryBudget(cat.id, Number(e.target.value))}
-                            placeholder={recommended ? `${recommended}` : "0"}
-                            className="h-8 text-sm"
+                            placeholder={recommended ? `${recommended}` : "—"}
+                            className="h-7 text-xs flex-1"
                           />
+                          {recommended > 0 && !budget && (
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 text-xs px-2 text-primary"
+                              onClick={() => updateCategoryBudget(cat.id, recommended)}
+                            >
+                              {formatCHF(recommended)}
+                            </Button>
+                          )}
+                          {!cat.isFixed && (
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <Slider
+                                value={[cat.priority]}
+                                min={0}
+                                max={5}
+                                step={1}
+                                onValueChange={([v]) => updateCategoryPriority(cat.id, v)}
+                                className="w-16"
+                              />
+                              <span className={`text-[10px] w-4 text-center font-medium ${PRIORITY_COLORS[cat.priority].split(" ")[1]}`}>
+                                {cat.priority}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                        {recommended > 0 && !budget && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            className="h-8 text-xs shrink-0"
-                            onClick={() => updateCategoryBudget(cat.id, recommended)}
-                          >
-                            Accept {formatCHF(recommended)}
-                          </Button>
-                        )}
-                        {budget > 0 && budget !== recommended && recommended > 0 && (
-                          <span className="text-xs text-muted-foreground shrink-0">
-                            Suggested: {formatCHF(recommended)}
-                          </span>
+
+                        {effectiveBudget > 0 && (
+                          <div className="h-1.5 rounded-full bg-gray-100">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                isOverBudget ? "bg-red-500" : "bg-green-500"
+                              }`}
+                              style={{
+                                width: `${Math.min((actual / effectiveBudget) * 100, 100)}%`,
+                              }}
+                            />
+                          </div>
                         )}
                       </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )
+            }
 
-                      {!cat.isFixed && (
-                        <div className="flex items-center gap-4">
-                          <Label className="text-xs text-muted-foreground w-16">Priority</Label>
-                          <Slider
-                            value={[cat.priority]}
-                            min={0}
-                            max={5}
-                            step={1}
-                            onValueChange={([v]) => updateCategoryPriority(cat.id, v)}
-                            className="flex-1"
-                          />
-                          <Badge className={`min-w-20 justify-center text-xs ${PRIORITY_COLORS[cat.priority]}`}>
-                            {cat.priority} — {PRIORITY_LABELS[cat.priority]}
-                          </Badge>
-                        </div>
-                      )}
-
-                      {effectiveBudget > 0 && (
-                        <div className="h-2 rounded-full bg-gray-100">
-                          <div
-                            className={`h-full rounded-full transition-all ${
-                              isOverBudget ? "bg-red-500" : "bg-green-500"
-                            }`}
-                            style={{
-                              width: `${Math.min((actual / effectiveBudget) * 100, 100)}%`,
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  )
-                })}
+            return (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-4">
+                  {leftGroups.map(renderGroup)}
+                </div>
+                <div className="space-y-4">
+                  {rightGroups.map(renderGroup)}
+                </div>
               </div>
-            </CardContent>
-          </Card>
+            )
+          })()}
         </TabsContent>
 
         {/* Transactions tab */}
