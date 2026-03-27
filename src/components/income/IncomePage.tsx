@@ -257,7 +257,11 @@ export function IncomePage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">
-              {incomes.filter((i) => !i.endDate && !i.isProjection).length}
+              {incomes.filter((i) => {
+                if (i.isProjection) return false
+                if (!i.endDate) return true
+                return i.endDate >= new Date().toISOString().split("T")[0]
+              }).length}
             </div>
           </CardContent>
         </Card>
@@ -307,7 +311,7 @@ export function IncomePage() {
                     <div className="space-y-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{inc.employer}</span>
-                        {!inc.endDate && <Badge variant="secondary" className="text-xs">Current</Badge>}
+                        {(!inc.endDate || inc.endDate >= new Date().toISOString().split("T")[0]) && !inc.isProjection && <Badge variant="secondary" className="text-xs">Current</Badge>}
                         {inc.isProjection && <Badge className="text-xs bg-blue-100 text-blue-700">Projected</Badge>}
                       </div>
                       <p className="text-sm text-muted-foreground">

@@ -79,7 +79,12 @@ export function useIncome() {
     [familyId]
   )
 
-  const currentIncomes = incomes.filter((i) => !i.endDate && !i.isProjection)
+  const today = new Date().toISOString().split("T")[0]
+  const currentIncomes = incomes.filter((i) => {
+    if (i.isProjection) return false
+    if (!i.endDate) return true
+    return i.endDate >= today
+  })
 
   const totalAnnualGross = currentIncomes
     .reduce((sum, i) => sum + Number(i.annualGross || 0) + Number(i.bonus || 0), 0)
