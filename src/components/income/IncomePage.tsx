@@ -64,19 +64,23 @@ export function IncomePage() {
   const handleAdd = async () => {
     const effectiveMemberId = memberId || family?.adults[0]?.id || ""
     if (!effectiveMemberId || !annualGross) return
-    await addIncome({
-      memberId: effectiveMemberId,
-      employer,
-      jobTitle,
-      type: incomeType,
-      annualGross,
-      bonus,
-      startDate,
-      endDate: endDate || undefined,
-      isProjection: false,
-    })
-    setDialogOpen(false)
-    resetForm()
+    try {
+      await addIncome({
+        memberId: effectiveMemberId,
+        employer,
+        jobTitle,
+        type: incomeType,
+        annualGross,
+        bonus,
+        startDate: startDate || new Date().toISOString().split("T")[0],
+        endDate: endDate || undefined,
+        isProjection: false,
+      })
+      setDialogOpen(false)
+      resetForm()
+    } catch (err) {
+      console.error("Failed to add income:", err)
+    }
   }
 
   // Build chart data: annual income by year

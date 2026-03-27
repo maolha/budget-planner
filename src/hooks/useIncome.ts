@@ -7,7 +7,6 @@ import {
   onSnapshot,
   serverTimestamp,
   query,
-  orderBy,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useAuthStore } from "@/store"
@@ -26,8 +25,7 @@ export function useIncome() {
     }
 
     const q = query(
-      collection(db, "families", familyId, "incomeRecords"),
-      orderBy("startDate", "desc")
+      collection(db, "families", familyId, "incomeRecords")
     )
 
     const unsubscribe = onSnapshot(q, (snapshot) => {

@@ -7,7 +7,6 @@ import {
   onSnapshot,
   serverTimestamp,
   query,
-  orderBy,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useAuthStore } from "@/store"
@@ -26,8 +25,7 @@ export function useAssets() {
     }
 
     const q = query(
-      collection(db, "families", familyId, "assets"),
-      orderBy("type")
+      collection(db, "families", familyId, "assets")
     )
 
     return onSnapshot(q, (snap) => {

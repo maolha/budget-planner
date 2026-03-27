@@ -7,7 +7,6 @@ import {
   onSnapshot,
   serverTimestamp,
   query,
-  orderBy,
   updateDoc,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
@@ -27,8 +26,7 @@ export function useExpenses() {
       return
     }
     const q = query(
-      collection(db, "families", familyId, "expenseCategories"),
-      orderBy("sortOrder")
+      collection(db, "families", familyId, "expenseCategories")
     )
     return onSnapshot(q, (snap) => {
       setCategories(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ExpenseCategory))
@@ -43,8 +41,7 @@ export function useExpenses() {
       return
     }
     const q = query(
-      collection(db, "families", familyId, "expenses"),
-      orderBy("date", "desc")
+      collection(db, "families", familyId, "expenses")
     )
     return onSnapshot(q, (snap) => {
       setExpenses(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Expense))
