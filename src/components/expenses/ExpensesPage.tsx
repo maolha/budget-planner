@@ -40,9 +40,9 @@ import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/constants"
 
 const GROUPS = [
   { label: "Fixed Costs", keys: ["housing", "health_insurance", "childcare", "taxes"] },
-  { label: "Daily Living", keys: ["groceries", "household", "personal_expenses", "communication"] },
+  { label: "Daily Living", keys: ["groceries", "household", "personal_expenses", "communication", "transport", "car"] },
   { label: "Lifestyle", keys: ["restaurants", "holidays", "leisure", "personal_care", "clothing", "gifts"] },
-  { label: "Savings, Investments & Other", keys: ["pension_3a", "bvg", "investments", "transport", "car", "other"] },
+  { label: "Savings & Investments", keys: ["pension_3a", "bvg", "investments", "other"] },
 ]
 
 export function ExpensesPage() {
