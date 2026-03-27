@@ -69,7 +69,7 @@ export function useIncome() {
 
   const totalAnnualGross = incomes
     .filter((i) => !i.endDate && !i.isProjection)
-    .reduce((sum, i) => sum + i.annualGross + (i.bonus ?? 0), 0)
+    .reduce((sum, i) => sum + Number(i.annualGross || 0) + Number(i.bonus || 0), 0)
 
   const totalMonthlyGross = Math.round(totalAnnualGross / 12)
 
