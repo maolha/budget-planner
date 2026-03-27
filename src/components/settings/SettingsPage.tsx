@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
-import { Save, Plus, Trash2 } from "lucide-react"
+import { Save, Plus, Trash2, Copy, RefreshCw, Users } from "lucide-react"
 import { useAuth } from "@/hooks/useAuth"
 import { useFamily } from "@/hooks/useFamily"
 import { toast } from "sonner"
@@ -16,7 +16,7 @@ import { useNavigate } from "react-router-dom"
 
 export function SettingsPage() {
   const { user } = useAuth()
-  const { family, updateFamily } = useFamily()
+  const { family, updateFamily, regenerateInviteCode } = useFamily()
   const navigate = useNavigate()
 
   const [familyName, setFamilyName] = useState(family?.name ?? "")
@@ -105,6 +105,53 @@ export function SettingsPage() {
             <Badge variant="secondary" className="font-mono text-xs">
               {family.id}
             </Badge>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Invite Code */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Users className="h-5 w-5" />
+            Family Sharing
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Share this invite code with your partner so they can join your family budget.
+            They sign up for their own account, then enter this code to link in.
+          </p>
+          <div className="flex items-center gap-3">
+            <div className="flex-1 rounded-lg border bg-muted/50 px-4 py-3 text-center font-mono text-2xl font-bold tracking-widest">
+              {family.inviteCode ?? "------"}
+            </div>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={() => {
+                navigator.clipboard.writeText(family.inviteCode ?? "")
+                toast.success("Invite code copied!")
+              }}
+              title="Copy code"
+            >
+              <Copy className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={async () => {
+                await regenerateInviteCode()
+                toast.success("New invite code generated")
+              }}
+              title="Generate new code"
+            >
+              <RefreshCw className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="flex items-center justify-between text-sm">
+            <span className="text-muted-foreground">Family members</span>
+            <Badge variant="secondary">{family.members.length} member(s)</Badge>
           </div>
         </CardContent>
       </Card>

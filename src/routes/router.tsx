@@ -3,6 +3,7 @@ import { AppLayout } from "@/components/layout/AppLayout"
 import { AuthGuard } from "@/components/auth/AuthGuard"
 import { LoginForm } from "@/components/auth/LoginForm"
 import { RegisterForm } from "@/components/auth/RegisterForm"
+import { JoinFamily } from "@/components/auth/JoinFamily"
 import { DashboardPage } from "@/components/dashboard/DashboardPage"
 import { OnboardingWizard } from "@/components/onboarding/OnboardingWizard"
 import { IncomePage } from "@/components/income/IncomePage"
@@ -37,6 +38,7 @@ export const router = createBrowserRouter([
           { path: "/forecasting", element: <ForecastPage /> },
           { path: "/settings", element: <SettingsPage /> },
           { path: "/onboarding", element: <OnboardingWizard /> },
+          { path: "/join", element: <JoinFamily /> },
         ],
       },
     ],

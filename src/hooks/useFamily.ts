@@ -6,11 +6,24 @@ import {
   serverTimestamp,
   collection,
   writeBatch,
+  query,
+  where,
+  getDocs,
+  arrayUnion,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useAuthStore } from "@/store"
 import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/constants"
 import type { Family, FamilyMember } from "@/types"
+
+function generateInviteCode(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789" // No I/O/0/1 to avoid confusion
+  let code = ""
+  for (let i = 0; i < 6; i++) {
+    code += chars[Math.floor(Math.random() * chars.length)]
+  }
+  return code
+}
 
 export function useFamily() {
   const { user, familyId, setFamilyId } = useAuthStore()
@@ -52,6 +65,7 @@ export function useFamily() {
       const familyData: Omit<Family, "id"> = {
         ownerId: user.uid,
         members: [user.uid],
+        inviteCode: generateInviteCode(),
         name: data.name,
         adults: data.adults,
         children: data.children,
@@ -73,7 +87,7 @@ export function useFamily() {
           name: cat.name,
           icon: cat.icon,
           color: cat.color,
-          priority: 3, // Default medium priority
+          priority: 3,
           isDefault: true,
           sortOrder: cat.sortOrder,
           isFixed: cat.isFixed,
@@ -86,6 +100,48 @@ export function useFamily() {
     },
     [user, setFamilyId]
   )
+
+  const joinFamily = useCallback(
+    async (inviteCode: string): Promise<boolean> => {
+      if (!user) throw new Error("Not authenticated")
+
+      // Find family by invite code
+      const q = query(
+        collection(db, "families"),
+        where("inviteCode", "==", inviteCode.toUpperCase().trim())
+      )
+      const snapshot = await getDocs(q)
+
+      if (snapshot.empty) return false
+
+      const familyDoc = snapshot.docs[0]
+
+      // Add this user to the members array
+      await setDoc(
+        doc(db, "families", familyDoc.id),
+        {
+          members: arrayUnion(user.uid),
+          updatedAt: serverTimestamp(),
+        },
+        { merge: true }
+      )
+
+      setFamilyId(familyDoc.id)
+      return true
+    },
+    [user, setFamilyId]
+  )
+
+  const regenerateInviteCode = useCallback(async () => {
+    if (!familyId) throw new Error("No family")
+    const newCode = generateInviteCode()
+    await setDoc(
+      doc(db, "families", familyId),
+      { inviteCode: newCode, updatedAt: serverTimestamp() },
+      { merge: true }
+    )
+    return newCode
+  }, [familyId])
 
   const updateFamily = useCallback(
     async (updates: Partial<Family>) => {
@@ -112,6 +168,8 @@ export function useFamily() {
     family,
     loading,
     createFamily,
+    joinFamily,
+    regenerateInviteCode,
     updateFamily,
     completeOnboarding,
   }

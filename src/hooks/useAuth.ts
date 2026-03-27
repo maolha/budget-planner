@@ -21,14 +21,24 @@ export function useAuth() {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser)
       if (firebaseUser) {
-        // Find user's family
-        const q = query(
+        // Find family where user is owner
+        const ownerQuery = query(
           collection(db, "families"),
           where("ownerId", "==", firebaseUser.uid)
         )
-        const snapshot = await getDocs(q)
-        if (!snapshot.empty) {
-          setFamilyId(snapshot.docs[0].id)
+        const ownerSnap = await getDocs(ownerQuery)
+        if (!ownerSnap.empty) {
+          setFamilyId(ownerSnap.docs[0].id)
+        } else {
+          // Check if user is a member of any family
+          const memberQuery = query(
+            collection(db, "families"),
+            where("members", "array-contains", firebaseUser.uid)
+          )
+          const memberSnap = await getDocs(memberQuery)
+          if (!memberSnap.empty) {
+            setFamilyId(memberSnap.docs[0].id)
+          }
         }
       } else {
         setFamilyId(null)

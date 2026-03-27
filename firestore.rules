@@ -2,12 +2,23 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /families/{familyId} {
+      // Owner and members can read/write
       allow read, write: if request.auth != null &&
         (resource == null || request.auth.uid == resource.data.ownerId ||
          request.auth.uid in resource.data.members);
+
+      // Any authenticated user can create a new family (they become owner)
       allow create: if request.auth != null &&
         request.resource.data.ownerId == request.auth.uid;
 
+      // Allow any authenticated user to read families by invite code (for joining)
+      allow read: if request.auth != null;
+
+      // Allow any authenticated user to update members array (for joining via invite code)
+      allow update: if request.auth != null &&
+        request.resource.data.members.hasAll(resource.data.members);
+
+      // All subcollections: accessible to owner or members
       match /{subcollection}/{docId} {
         allow read, write: if request.auth != null &&
           (request.auth.uid == get(/databases/$(database)/documents/families/$(familyId)).data.ownerId ||
