@@ -67,9 +67,23 @@ export function useIncome() {
     [familyId]
   )
 
-  const totalAnnualGross = incomes
-    .filter((i) => !i.endDate && !i.isProjection)
+  // Debug: log income data to help diagnose issues
+  if (incomes.length > 0) {
+    console.log("[useIncome] records:", incomes.length, "familyId:", familyId)
+    incomes.forEach((i) =>
+      console.log(`  ${i.employer}: gross=${i.annualGross} (${typeof i.annualGross}), endDate=${JSON.stringify(i.endDate)}, projection=${i.isProjection}`)
+    )
+  }
+
+  const currentIncomes = incomes.filter((i) => {
+    const hasEndDate = i.endDate !== null && i.endDate !== undefined && i.endDate !== ""
+    return !hasEndDate && !i.isProjection
+  })
+
+  const totalAnnualGross = currentIncomes
     .reduce((sum, i) => sum + Number(i.annualGross || 0) + Number(i.bonus || 0), 0)
+
+  console.log("[useIncome] current positions:", currentIncomes.length, "totalAnnualGross:", totalAnnualGross)
 
   const totalMonthlyGross = Math.round(totalAnnualGross / 12)
 
