@@ -79,15 +79,15 @@ export function DashboardPage() {
     return [...top, { name: "Other", value: otherValue, color: "#94a3b8" }]
   })()
 
-  // Monthly spending trend (last 6 months)
+  // Monthly spending trend (last 6 months) — use budget as baseline when no transactions
   const spendingTrend = Array.from({ length: 6 }, (_, i) => {
     const d = new Date()
     d.setMonth(d.getMonth() - (5 - i))
     const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
-    const total = expenses
+    const actual = expenses
       .filter((e) => e.date.substring(0, 7) === ym)
       .reduce((s, e) => s + e.amount, 0)
-    return { month: ym, expenses: total, income: monthlyNetIncome }
+    return { month: ym, expenses: actual || effectiveMonthlyExpenses, income: monthlyNetIncome }
   })
 
   // Top 5 expenses this month
