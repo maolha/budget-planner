@@ -57,8 +57,8 @@ export function ExpensesPage() {
   const [expDate, setExpDate] = useState(new Date().toISOString().split("T")[0])
   const [expDescription, setExpDescription] = useState("")
 
-  const numChildren = family?.children.filter((c) => !c.isPlanned).length ?? 0
-  const numAdults = family?.adults.length ?? 2
+  const numChildren = family?.children?.filter((c) => !c.isPlanned).length ?? 0
+  const numAdults = family?.adults?.length ?? 2
   const filingStatus = numAdults >= 2 ? "married" as const : "single" as const
 
   const taxResult = useMemo(

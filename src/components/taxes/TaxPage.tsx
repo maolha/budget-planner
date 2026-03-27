@@ -29,8 +29,8 @@ export function TaxPage() {
   const { family } = useFamily()
   const { incomes, totalAnnualGross } = useIncome()
 
-  const numAdults = family?.adults.length ?? 2
-  const numChildren = family?.children.filter((c) => !c.isPlanned).length ?? 0
+  const numAdults = family?.adults?.length ?? 2
+  const numChildren = family?.children?.filter((c) => !c.isPlanned).length ?? 0
   const derivedFilingStatus = numAdults >= 2 ? "married" as const : "single" as const
   const derivedMunicipality = family?.municipality ?? "Zürich"
   const derivedChurchTax = family?.churchTax ?? false
