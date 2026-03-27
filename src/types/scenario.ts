@@ -8,7 +8,9 @@ export type LifeEventType =
   | "retirement"
   | "mortgage_change"
   | "large_purchase"
+  | "pension_buyin"
   | "education_start"
+  | "business_start"
   | "custom"
 
 export interface LifeEvent {

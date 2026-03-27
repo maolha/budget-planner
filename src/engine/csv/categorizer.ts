@@ -1,67 +1,92 @@
 import type { ParsedTransaction } from "./types"
 
-// Keyword → category mapping for common Zurich merchants/patterns
+// Keyword → category mapping for Zurich merchants and German-language bank statements
 const CATEGORY_KEYWORDS: Record<string, string[]> = {
   groceries: [
     "migros", "coop", "denner", "aldi", "lidl", "spar", "volg",
-    "manor food", "globus delicatessa",
+    "manor food", "globus delicatessa", "lebensmittel", "nahrung",
   ],
   restaurants: [
     "restaurant", "café", "cafe", "bar", "bistro", "pizzeria",
     "mcdonald", "burger king", "starbucks", "subway", "kebab",
     "takeaway", "delivery", "uber eats", "just eat", "eat.ch",
+    "club", "lounge",
   ],
   transport: [
-    "sbb", "zvv", "vbz", "zürcher verkehrsverbund", "parkhaus",
-    "parking", "benzin", "tankstelle", "shell", "bp ", "avia",
+    "sbb", "zvv", "vbz", "zürcher verkehrsverbund",
     "mobility", "uber", "bolt", "taxi", "lime", "tier",
+    "verkehr", "öv", "halbtax", "ga ",
+  ],
+  car: [
+    "parkhaus", "parking", "benzin", "tankstelle", "shell", "bp ",
+    "avia", "auto", "garage", "tcs", "strassenverkehrsamt",
+    "versicherung auto", "motorfahrzeug",
   ],
   health_insurance: [
     "krankenkasse", "css", "helsana", "swica", "sanitas",
     "concordia", "visana", "atupri", "kvg", "assura",
+    "gesundheit", "arzt", "zahnarzt", "apotheke", "pharmacy",
+    "drogerie", "optiker", "spital", "praxis",
   ],
   holidays: [
     "hotel", "airbnb", "booking.com", "expedia", "swiss.com",
-    "easyjet", "ryanair", "flug", "flight",
+    "easyjet", "ryanair", "flug", "flight", "ferien", "reise",
   ],
   clothing: [
     "h&m", "zara", "uniqlo", "c&a", "pkz", "globus",
-    "manor", "jelmoli", "zalando",
+    "manor", "jelmoli", "zalando", "kleider", "schuhe",
   ],
-  entertainment: [
+  leisure: [
     "kino", "cinema", "spotify", "netflix", "disney",
     "apple music", "ticketcorner", "theater", "museum",
-    "zoo", "konzert",
+    "zoo", "konzert", "fitness", "sport", "hobby",
+    "freizeit",
   ],
-  subscriptions: [
+  communication: [
     "swisscom", "sunrise", "salt", "wingo", "yallo",
-    "adobe", "microsoft", "google storage", "icloud",
-    "nzz", "tages-anzeiger", "blick",
-  ],
-  education: [
-    "schule", "kurs", "udemy", "coursera", "bücher",
-    "books", "orell füssli", "stauffacher",
+    "internet", "nzz", "tages-anzeiger", "blick",
+    "kommunikation", "medien",
   ],
   personal_care: [
-    "apotheke", "pharmacy", "drogerie", "arzt", "zahnarzt",
-    "dentist", "coiffeur", "friseur", "haircut", "optiker",
+    "coiffeur", "friseur", "haircut", "kosmetik",
+    "wellness", "spa", "massage", "körperpflege", "hygiene",
   ],
   gifts: [
     "geschenk", "gift", "blumen", "flowers", "fleurop",
   ],
-  utilities: [
-    "ewz", "energie", "elektrizität", "heizung", "serafe",
-    "billag", "internet", "strom",
-  ],
-  rent: [
+  housing: [
     "miete", "rent", "immobilien", "wohnung",
-    "verwaltung", "nebenkosten",
+    "verwaltung", "nebenkosten", "ewz", "energie",
+    "elektrizität", "heizung", "serafe", "strom", "wohnen",
+  ],
+  household: [
+    "haushalt", "ikea", "möbel", "pfister", "micasa",
+    "reinigung", "putzfrau", "hauswart",
+  ],
+  childcare: [
+    "kita", "kinderbetreuung", "krippe", "hort",
+    "tagesschule", "babysit",
+  ],
+  personal_expenses: [
+    "persönlich", "ausgaben", "cashbezug", "bargeldbezug",
+  ],
+  investments: [
+    "swissquote", "degiro", "interactive brokers", "crypto",
+    "bitcoin", "ethereum", "nexo", "coinbase", "binance",
+    "invest", "anlage",
+  ],
+  taxes: [
+    "steueramt", "steuern", "steuer", "quellensteuer",
+    "bundessteuer", "kantonssteuer",
+  ],
+  pension_3a: [
+    "3a", "säule 3", "pillar 3", "viac", "frankly",
+    "vorsorge",
   ],
 }
 
 /**
  * Auto-categorize a transaction based on description keywords.
- * Returns the category key and confidence score.
  */
 export function categorizeTransaction(
   description: string
