@@ -41,7 +41,7 @@ export function IncomePage() {
   const [dialogOpen, setDialogOpen] = useState(false)
 
   // Form state
-  const [memberId, setMemberId] = useState("")
+  const [memberId, setMemberId] = useState(family?.adults[0]?.id ?? "")
   const [employer, setEmployer] = useState("")
   const [jobTitle, setJobTitle] = useState("")
   const [incomeType, setIncomeType] = useState<IncomeType>("salary")
@@ -62,8 +62,10 @@ export function IncomePage() {
   }
 
   const handleAdd = async () => {
+    const effectiveMemberId = memberId || family?.adults[0]?.id || ""
+    if (!effectiveMemberId || !annualGross) return
     await addIncome({
-      memberId,
+      memberId: effectiveMemberId,
       employer,
       jobTitle,
       type: incomeType,
