@@ -304,8 +304,7 @@ export function IncomePage() {
                       <p className="text-sm text-muted-foreground">
                         {inc.jobTitle && `${inc.jobTitle} · `}
                         {memberName}
-                        {inc.startDate && ` · ${formatDate(inc.startDate, "MMM yyyy")}`}
-                        {inc.endDate && ` — ${formatDate(inc.endDate, "MMM yyyy")}`}
+                        {inc.startDate && ` · ${formatDate(inc.startDate, "MMM yyyy")} — ${inc.endDate ? formatDate(inc.endDate, "MMM yyyy") : "Present"}`}
                       </p>
                     </div>
                     <div className="flex items-center gap-3 shrink-0">
