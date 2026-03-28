@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react"
+import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -73,32 +73,8 @@ export function ExpensesPage() {
   )
   const monthlyNetIncome = Math.round((grossForCalc - taxForCalc.total) / 12)
 
-  // Full tax (always based on total gross, for budget category sync)
-  const fullTaxResult = useMemo(
-    () => calculateTaxSimple(totalAnnualGross, filingStatus, numChildren, {
-      municipality: family?.municipality ?? "Zürich",
-      churchTax: family?.churchTax ?? false,
-      pension3a: family?.pension3aOverride,
-      otherDeductions: family?.otherDeductions,
-    }),
-    [totalAnnualGross, filingStatus, numChildren, family?.municipality, family?.churchTax, family?.pension3aOverride, family?.otherDeductions]
-  )
-
-  // Auto-sync calculated monthly tax into the "Taxes" budget category
-  const taxSyncRef = useRef(0)
-  useEffect(() => {
-    const monthlyTax = fullTaxResult.monthlyTax
-    if (monthlyTax <= 0 || categories.length === 0) return
-    const rounded = Math.round(monthlyTax / 100) * 100 // round to nearest 100
-    if (rounded === taxSyncRef.current) return // avoid loops
-    const taxCat = categories.find((c) =>
-      c.name.toLowerCase().replace(/[^a-z]+/g, "").includes("tax")
-    )
-    if (taxCat && (taxCat.monthlyBudget ?? 0) !== rounded) {
-      taxSyncRef.current = rounded
-      updateCategoryBudget(taxCat.id, rounded)
-    }
-  }, [fullTaxResult.monthlyTax, categories, updateCategoryBudget])
+  // Monthly tax for display (informational, not counted in expenses)
+  const monthlyTax = taxForCalc.monthlyTax
 
   // Current month totals
   const now = new Date()
@@ -111,7 +87,11 @@ export function ExpensesPage() {
   }
 
   // Budget total from category budgets
-  const totalBudget = categories.reduce((s, c) => s + (c.monthlyBudget ?? 0), 0)
+  // Exclude tax category from budget total (tax already deducted from net income)
+  const isTaxCategory = (c: { name: string }) => c.name.toLowerCase().includes("tax")
+  const totalBudget = categories
+    .filter((c) => !isTaxCategory(c))
+    .reduce((s, c) => s + (c.monthlyBudget ?? 0), 0)
 
   // Helper: find category by key
   const findCatByKey = (key: string) =>
@@ -294,7 +274,19 @@ export function ExpensesPage() {
                     <div className="space-y-1">
                       {groupCats.map((cat) => {
                         const defaultDef = DEFAULT_EXPENSE_CATEGORIES.find((d) => d.name === cat.name)
-                        const isTaxCat = cat.name.toLowerCase().includes("tax")
+                        const isTaxCat = isTaxCategory(cat)
+                        if (isTaxCat) {
+                          return (
+                            <div key={cat.id} className="flex items-center gap-3 py-1.5 border-b last:border-0 opacity-60">
+                              <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: cat.color }} />
+                              <span className="text-sm flex-1 min-w-0 truncate">
+                                {cat.name}
+                                <span className="text-xs text-muted-foreground ml-1">(from Tax page, not in budget total)</span>
+                              </span>
+                              <span className="text-sm text-muted-foreground">{formatCHF(Math.round(monthlyTax))}</span>
+                            </div>
+                          )
+                        }
                         return (
                           <div
                             key={cat.id}
@@ -304,12 +296,7 @@ export function ExpensesPage() {
                               className="h-2 w-2 rounded-full shrink-0"
                               style={{ backgroundColor: cat.color }}
                             />
-                            <span className="text-sm flex-1 min-w-0 truncate">
-                              {cat.name}
-                              {isTaxCat && (
-                                <span className="text-xs text-muted-foreground ml-1">(from Tax page)</span>
-                              )}
-                            </span>
+                            <span className="text-sm flex-1 min-w-0 truncate">{cat.name}</span>
                             <div className="flex items-center gap-1 shrink-0">
                               <span className="text-xs text-muted-foreground">CHF</span>
                               <Input
@@ -317,9 +304,7 @@ export function ExpensesPage() {
                                 value={cat.monthlyBudget ?? ""}
                                 onChange={(e) => updateCategoryBudget(cat.id, Number(e.target.value))}
                                 placeholder={defaultDef?.typicalMonthly?.toString() ?? "—"}
-                                className={`h-7 w-24 text-sm text-right ${isTaxCat ? "bg-muted/50" : ""}`}
-                                readOnly={isTaxCat}
-                                title={isTaxCat ? "Auto-calculated from Tax page" : undefined}
+                                className="h-7 w-24 text-sm text-right"
                               />
                             </div>
                           </div>

@@ -133,7 +133,10 @@ export function useExpenses() {
     return Object.values(totals).reduce((s, v) => s + v, 0)
   })()
 
-  const totalMonthlyBudget = categories.reduce((s, c) => s + Number(c.monthlyBudget ?? 0), 0)
+  // Exclude tax category from budget total (tax is already deducted from net income)
+  const totalMonthlyBudget = categories
+    .filter((c) => !c.name.toLowerCase().includes("tax"))
+    .reduce((s, c) => s + Number(c.monthlyBudget ?? 0), 0)
 
   return {
     expenses,

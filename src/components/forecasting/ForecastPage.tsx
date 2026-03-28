@@ -185,25 +185,28 @@ export function ForecastPage() {
     return data
   }, [baseForecast.months, fullTimeline, taxRatio])
 
-  // Scenario comparison data
-  const scenarioChartData = useMemo(() => {
+  // Scenario comparison data: net worth + savings
+  const scenarioNWData = useMemo(() => {
     return baseForecast.months
       .filter((_, i) => i % 3 === 0)
       .map((m, i) => {
-        const point: Record<string, string | number> = {
-          date: m.date,
-          "Base Income": m.income,
-          "Base Expenses": m.expenses,
-          "Base Net Worth": m.netWorth,
-        }
+        const point: Record<string, string | number> = { date: m.date, "Base": m.netWorth }
         for (const s of scenarioForecasts) {
           const idx = i * 3
-          const sm = s.forecast.months[idx]
-          if (sm) {
-            point[`${s.name} Income`] = sm.income
-            point[`${s.name} Expenses`] = sm.expenses
-            point[`${s.name} Net Worth`] = sm.netWorth
-          }
+          point[s.name] = s.forecast.months[idx]?.netWorth ?? 0
+        }
+        return point
+      })
+  }, [baseForecast.months, scenarioForecasts])
+
+  const scenarioSavingsData = useMemo(() => {
+    return baseForecast.months
+      .filter((_, i) => i % 3 === 0)
+      .map((m, i) => {
+        const point: Record<string, string | number> = { date: m.date, "Base": m.savings }
+        for (const s of scenarioForecasts) {
+          const idx = i * 3
+          point[s.name] = s.forecast.months[idx]?.savings ?? 0
         }
         return point
       })
@@ -246,6 +249,33 @@ export function ForecastPage() {
       }
     } else {
       await saveBaseEvents(baseEvents.filter((e) => e.id !== eventId))
+    }
+  }
+
+  const moveEvent = async (eventId: string, fromScenarioId: string | null, toScenarioId: string | null) => {
+    // Find the event
+    let event: LifeEvent | undefined
+    if (fromScenarioId) {
+      const from = savedScenarios.find((s) => s.id === fromScenarioId)
+      event = from?.lifeEvents?.find((e) => e.id === eventId)
+    } else {
+      event = baseEvents.find((e) => e.id === eventId)
+    }
+    if (!event) return
+
+    // Remove from source
+    await removeEvent(eventId, fromScenarioId)
+
+    // Add to target
+    if (toScenarioId) {
+      const to = savedScenarios.find((s) => s.id === toScenarioId)
+      if (to) {
+        await updateScenario(toScenarioId, {
+          lifeEvents: [...(to.lifeEvents ?? []), event],
+        })
+      }
+    } else {
+      await saveBaseEvents([...baseEvents, event])
     }
   }
 
@@ -526,39 +556,54 @@ export function ForecastPage() {
         </CardContent>
       </Card>
 
-      {/* Scenario comparison chart (only shown when scenarios exist) */}
+      {/* Scenario comparison charts */}
       {scenarios.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Scenario Comparison</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <ComposedChart data={scenarioChartData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={3} />
-                  <YAxis yAxisId="flow" tickFormatter={formatAxisCHF} />
-                  <YAxis yAxisId="nw" orientation="right" tickFormatter={formatAxisCHF} />
-                  <Tooltip formatter={(v) => formatCHF(Number(v))} />
-                  <Legend />
-                  <Line yAxisId="flow" type="monotone" dataKey="Base Income" stroke="#22c55e" strokeWidth={2} dot={false} />
-                  <Line yAxisId="flow" type="monotone" dataKey="Base Expenses" stroke="#ef4444" strokeWidth={2} dot={false} />
-                  <Line yAxisId="nw" type="monotone" dataKey="Base Net Worth" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                  {scenarioForecasts.map((s, i) => (
-                    <Line key={`${s.id}-nw`} yAxisId="nw" type="monotone" dataKey={`${s.name} Net Worth`} stroke={COLORS[(i + 1) % COLORS.length]} strokeWidth={2} dot={false} strokeDasharray="5 5" />
-                  ))}
-                  {scenarioForecasts.map((s, i) => (
-                    <Line key={`${s.id}-inc`} yAxisId="flow" type="monotone" dataKey={`${s.name} Income`} stroke={COLORS[(i + 1) % COLORS.length]} strokeWidth={1} dot={false} strokeDasharray="3 3" />
-                  ))}
-                  {scenarioForecasts.map((s, i) => (
-                    <Line key={`${s.id}-exp`} yAxisId="flow" type="monotone" dataKey={`${s.name} Expenses`} stroke={COLORS[(i + 1) % COLORS.length]} strokeWidth={1} dot={false} strokeDasharray="8 4" />
-                  ))}
-                </ComposedChart>
-              </ResponsiveContainer>
-            </div>
-          </CardContent>
-        </Card>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <Card>
+            <CardHeader>
+              <CardTitle>Monthly Savings Comparison</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={scenarioSavingsData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={3} />
+                    <YAxis tickFormatter={formatAxisCHF} />
+                    <Tooltip formatter={(v) => formatCHF(Number(v))} />
+                    <Legend />
+                    <Line type="monotone" dataKey="Base" stroke={COLORS[0]} strokeWidth={2} dot={false} />
+                    {scenarioForecasts.map((s, i) => (
+                      <Line key={s.id} type="monotone" dataKey={s.name} stroke={COLORS[(i + 1) % COLORS.length]} strokeWidth={2} dot={false} strokeDasharray="5 5" />
+                    ))}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader>
+              <CardTitle>Net Worth Comparison</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="h-72">
+                <ResponsiveContainer width="100%" height="100%">
+                  <ComposedChart data={scenarioNWData}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={3} />
+                    <YAxis tickFormatter={formatAxisCHF} />
+                    <Tooltip formatter={(v) => formatCHF(Number(v))} />
+                    <Legend />
+                    <Line type="monotone" dataKey="Base" stroke={COLORS[0]} strokeWidth={2} dot={false} />
+                    {scenarioForecasts.map((s, i) => (
+                      <Line key={s.id} type="monotone" dataKey={s.name} stroke={COLORS[(i + 1) % COLORS.length]} strokeWidth={2} dot={false} strokeDasharray="5 5" />
+                    ))}
+                  </ComposedChart>
+                </ResponsiveContainer>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {/* Life events timeline */}
@@ -585,9 +630,23 @@ export function ForecastPage() {
                         {LIFE_EVENT_TYPES.find((t) => t.value === event.type)?.label}
                       </Badge>
                     </div>
-                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeEvent(event.id, null)}>
-                      <Trash2 className="h-3 w-3 text-destructive" />
-                    </Button>
+                    <div className="flex items-center gap-1">
+                      {scenarios.length > 0 && (
+                        <Select value="" onValueChange={(v) => moveEvent(event.id, null, v)}>
+                          <SelectTrigger className="h-7 w-24 text-xs">
+                            <SelectValue placeholder="Move to" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {scenarios.map((s) => (
+                              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      )}
+                      <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => removeEvent(event.id, null)}>
+                        <Trash2 className="h-3 w-3 text-destructive" />
+                      </Button>
+                    </div>
                   </div>
                 ))}
             </div>
@@ -643,9 +702,22 @@ export function ForecastPage() {
                         <Badge variant="secondary" className="text-xs">{event.date}</Badge>
                         <span className="text-sm">{event.label}</span>
                       </div>
-                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeEvent(event.id, scenario.id)}>
-                        <Trash2 className="h-3 w-3 text-destructive" />
-                      </Button>
+                      <div className="flex items-center gap-1">
+                        <Select value="" onValueChange={(v) => moveEvent(event.id, scenario.id, v === "base" ? null : v)}>
+                          <SelectTrigger className="h-6 w-24 text-xs">
+                            <SelectValue placeholder="Move to" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="base">Base Timeline</SelectItem>
+                            {scenarios.filter((s) => s.id !== scenario.id).map((s) => (
+                              <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => removeEvent(event.id, scenario.id)}>
+                          <Trash2 className="h-3 w-3 text-destructive" />
+                        </Button>
+                      </div>
                     </div>
                   ))}
                 </div>
