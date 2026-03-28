@@ -31,6 +31,7 @@ export interface Asset {
   name: string
   type: AssetType
   subtype?: string
+  ownerId?: string // FamilyMember.id — "family" for joint, or member id
   currentValue: number
   currency: Currency
   institution?: string

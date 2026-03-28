@@ -18,6 +18,7 @@ import {
   Tooltip,
 } from "recharts"
 import { useAssets } from "@/hooks/useAssets"
+import { useFamily } from "@/hooks/useFamily"
 import { calculateNetWorth } from "@/engine/net-worth/net-worth-calculator"
 import { ASSET_TYPES, LIABILITY_TYPE_OPTIONS } from "@/lib/constants"
 import { LIABILITY_TYPES } from "@/types/asset"
@@ -49,8 +50,23 @@ const TYPE_LABELS: Record<string, string> = Object.fromEntries([
 ])
 
 export function AssetsPage() {
-  const { assets, loading, addAsset, updateAssetValue, deleteAsset } = useAssets()
+  const { assets, loading, addAsset, updateAsset, updateAssetValue, deleteAsset } = useAssets()
+  const { family } = useFamily()
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null)
+
+  // Build owner options from family members
+  const ownerOptions = useMemo(() => {
+    const opts: Array<{ id: string; label: string }> = [{ id: "family", label: "Family (joint)" }]
+    for (const adult of family?.adults ?? []) {
+      opts.push({ id: adult.id, label: adult.name || "Unnamed" })
+    }
+    for (const child of family?.children ?? []) {
+      if (!child.isPlanned) {
+        opts.push({ id: child.id, label: child.name || "Unnamed" })
+      }
+    }
+    return opts
+  }, [family?.adults, family?.children])
 
   // Inline add row state (assets)
   const [addingRow, setAddingRow] = useState(false)
@@ -58,6 +74,7 @@ export function AssetsPage() {
   const [newType, setNewType] = useState<AssetType>("bank_account")
   const [newValue, setNewValue] = useState(0)
   const [newInstitution, setNewInstitution] = useState("")
+  const [newOwner, setNewOwner] = useState("family")
 
   // Inline add row state (liabilities)
   const [addingLiability, setAddingLiability] = useState(false)
@@ -65,6 +82,7 @@ export function AssetsPage() {
   const [newLiabType, setNewLiabType] = useState<AssetType>("personal_loan")
   const [newLiabValue, setNewLiabValue] = useState(0)
   const [newLiabInstitution, setNewLiabInstitution] = useState("")
+  const [newLiabOwner, setNewLiabOwner] = useState("family")
 
   const netWorth = useMemo(() => calculateNetWort(assets), [assets])
 
@@ -79,11 +97,13 @@ export function AssetsPage() {
       currentValue: newValue,
       currency: "CHF",
       institution: newInstitution,
+      ownerId: newOwner,
     })
     setNewName("")
     setNewType("bank_account")
     setNewValue(0)
     setNewInstitution("")
+    setNewOwner("family")
     setAddingRow(false)
   }
 
@@ -95,11 +115,13 @@ export function AssetsPage() {
       currentValue: newLiabValue,
       currency: "CHF",
       institution: newLiabInstitution,
+      ownerId: newLiabOwner,
     })
     setNewLiabName("")
     setNewLiabType("personal_loan")
     setNewLiabValue(0)
     setNewLiabInstitution("")
+    setNewLiabOwner("family")
     setAddingLiability(false)
   }
 
@@ -222,6 +244,7 @@ export function AssetsPage() {
                   <tr className="border-b text-left text-muted-foreground">
                     <th className="pb-2 font-medium">Name</th>
                     <th className="pb-2 font-medium">Type</th>
+                    <th className="pb-2 font-medium">Owner</th>
                     <th className="pb-2 font-medium">Institution</th>
                     <th className="pb-2 font-medium text-right">Value (CHF)</th>
                     <th className="pb-2 font-medium text-right">Change</th>
@@ -233,7 +256,10 @@ export function AssetsPage() {
                     <AssetRow
                       key={asset.id}
                       asset={asset}
+                      ownerOptions={ownerOptions}
+
                       onUpdateValue={(v) => updateAssetValue(asset.id, v)}
+                      onUpdateOwner={(ownerId) => updateAsset(asset.id, { ownerId })}
                       onDelete={() => deleteAsset(asset.id)}
                       expanded={expandedHistory === asset.id}
                       onToggleHistory={() =>
@@ -260,6 +286,18 @@ export function AssetsPage() {
                           <SelectContent>
                             {ASSET_TYPES.map((t) => (
                               <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </td>
+                      <td className="py-2 pr-2">
+                        <Select value={newOwner} onValueChange={setNewOwner}>
+                          <SelectTrigger className="h-8 text-sm">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {ownerOptions.map((o) => (
+                              <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>
                             ))}
                           </SelectContent>
                         </Select>
@@ -296,7 +334,7 @@ export function AssetsPage() {
                   )}
                   {assetItems.length === 0 && !addingRow && (
                     <tr>
-                      <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                      <td colSpan={7} className="py-8 text-center text-muted-foreground">
                         No assets yet. Click "Add" to get started.
                       </td>
                     </tr>
@@ -305,7 +343,7 @@ export function AssetsPage() {
                 {assetItems.length > 0 && (
                   <tfoot>
                     <tr className="border-t font-medium">
-                      <td className="pt-2" colSpan={3}>Total</td>
+                      <td className="pt-2" colSpan={4}>Total</td>
                       <td className="pt-2 text-right">{formatCHF(netWorth.totalAssets)}</td>
                       <td></td>
                       <td></td>
@@ -338,6 +376,7 @@ export function AssetsPage() {
                 <tr className="border-b text-left text-muted-foreground">
                   <th className="pb-2 font-medium">Name</th>
                   <th className="pb-2 font-medium">Type</th>
+                  <th className="pb-2 font-medium">Owner</th>
                   <th className="pb-2 font-medium">Institution</th>
                   <th className="pb-2 font-medium text-right">Balance (CHF)</th>
                   <th className="pb-2 font-medium text-right">Change</th>
@@ -349,7 +388,9 @@ export function AssetsPage() {
                   <AssetRow
                     key={asset.id}
                     asset={asset}
+                    ownerOptions={ownerOptions}
                     onUpdateValue={(v) => updateAssetValue(asset.id, v)}
+                    onUpdateOwner={(ownerId) => updateAsset(asset.id, { ownerId })}
                     onDelete={() => deleteAsset(asset.id)}
                     expanded={expandedHistory === asset.id}
                     onToggleHistory={() =>
@@ -376,6 +417,18 @@ export function AssetsPage() {
                         <SelectContent>
                           {LIABILITY_TYPE_OPTIONS.map((t) => (
                             <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </td>
+                    <td className="py-2 pr-2">
+                      <Select value={newLiabOwner} onValueChange={setNewLiabOwner}>
+                        <SelectTrigger className="h-8 text-sm">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {ownerOptions.map((o) => (
+                            <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>
                           ))}
                         </SelectContent>
                       </Select>
@@ -412,7 +465,7 @@ export function AssetsPage() {
                 )}
                 {liabilityItems.length === 0 && !addingLiability && (
                   <tr>
-                    <td colSpan={6} className="py-6 text-center text-muted-foreground">
+                    <td colSpan={7} className="py-6 text-center text-muted-foreground">
                       No liabilities. Click "Add Liability" to track loans, credit cards, etc.
                     </td>
                   </tr>
@@ -421,7 +474,7 @@ export function AssetsPage() {
               {liabilityItems.length > 0 && (
                 <tfoot>
                   <tr className="border-t font-medium text-red-600">
-                    <td className="pt-2" colSpan={3}>Total Liabilities</td>
+                    <td className="pt-2" colSpan={4}>Total Liabilities</td>
                     <td className="pt-2 text-right">{formatCHF(netWorth.totalLiabilities)}</td>
                     <td></td>
                     <td></td>
@@ -438,13 +491,17 @@ export function AssetsPage() {
 
 function AssetRow({
   asset,
+  ownerOptions,
   onUpdateValue,
+  onUpdateOwner,
   onDelete,
   expanded,
   onToggleHistory,
 }: {
   asset: Asset
+  ownerOptions: Array<{ id: string; label: string }>
   onUpdateValue: (v: number) => void
+  onUpdateOwner: (ownerId: string) => void
   onDelete: () => void
   expanded: boolean
   onToggleHistory: () => void
@@ -473,6 +530,18 @@ function AssetRow({
         </td>
         <td className="py-2 pr-2 text-muted-foreground">
           {TYPE_LABELS[asset.type] ?? asset.type}
+        </td>
+        <td className="py-2 pr-2">
+          <Select value={asset.ownerId ?? "family"} onValueChange={onUpdateOwner}>
+            <SelectTrigger className="h-7 text-xs border-none shadow-none px-1">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {ownerOptions.map((o) => (
+                <SelectItem key={o.id} value={o.id}>{o.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </td>
         <td className="py-2 pr-2 text-muted-foreground">
           {asset.institution ?? "—"}
@@ -532,7 +601,7 @@ function AssetRow({
       </tr>
       {expanded && history.length > 1 && (
         <tr>
-          <td colSpan={6} className="pb-3 pl-6">
+          <td colSpan={7} className="pb-3 pl-6">
             <div className="rounded border bg-muted/20 p-3">
               <p className="text-xs font-medium text-muted-foreground mb-2">Value History</p>
               <div className="space-y-1">
