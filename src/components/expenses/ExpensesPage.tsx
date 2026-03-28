@@ -53,6 +53,10 @@ export function ExpensesPage() {
   const { includeBonus, toggleIncludeBonus } = useUIStore()
   const { family } = useFamily()
 
+  const [viewMode, setViewMode] = useState<"monthly" | "yearly">("monthly")
+  const mult = viewMode === "yearly" ? 12 : 1
+  const period = viewMode === "yearly" ? "year" : "month"
+
   const [dialogOpen, setDialogOpen] = useState(false)
   const [expCategoryId, setExpCategoryId] = useState("")
   const [expAmount, setExpAmount] = useState(0)
@@ -133,9 +137,29 @@ export function ExpensesPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">Expenses</h1>
-          <p className="text-muted-foreground">Set your monthly budget per category.</p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight">Expenses</h1>
+            <p className="text-muted-foreground">Set your budget per category.</p>
+          </div>
+          <div className="flex rounded-md border">
+            <Button
+              variant={viewMode === "monthly" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs rounded-r-none"
+              onClick={() => setViewMode("monthly")}
+            >
+              Monthly
+            </Button>
+            <Button
+              variant={viewMode === "yearly" ? "default" : "ghost"}
+              size="sm"
+              className="h-7 text-xs rounded-l-none"
+              onClick={() => setViewMode("yearly")}
+            >
+              Yearly
+            </Button>
+          </div>
         </div>
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
@@ -198,7 +222,7 @@ export function ExpensesPage() {
       <div className="grid gap-4 sm:grid-cols-3">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Net Income</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Net Income / {period}</CardTitle>
             <Button
               variant={includeBonus ? "default" : "outline"}
               size="sm"
@@ -209,7 +233,7 @@ export function ExpensesPage() {
             </Button>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCHF(monthlyNetIncome)}</div>
+            <div className="text-2xl font-bold">{formatCHF(monthlyNetIncome * mult)}</div>
             <p className="text-xs text-muted-foreground">
               {includeBonus ? "incl. bonus (avg)" : "salary only — conservative"}
             </p>
@@ -217,11 +241,11 @@ export function ExpensesPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Total Monthly Budget</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Total Budget / {period}</CardTitle>
             <ArrowDownUp className="h-4 w-4 text-red-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{formatCHF(totalBudget)}</div>
+            <div className="text-2xl font-bold">{formatCHF(totalBudget * mult)}</div>
             <p className="text-xs text-muted-foreground">
               {monthlyNetIncome > 0 && totalBudget > 0
                 ? `${Math.round((totalBudget / monthlyNetIncome) * 100)}% of income`
@@ -231,12 +255,12 @@ export function ExpensesPage() {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Surplus</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Surplus / {period}</CardTitle>
             <Target className="h-4 w-4 text-blue-600" />
           </CardHeader>
           <CardContent>
             <div className={`text-2xl font-bold ${monthlyNetIncome - totalBudget >= 0 ? "text-green-600" : "text-red-600"}`}>
-              {formatCHF(monthlyNetIncome - totalBudget)}
+              {formatCHF((monthlyNetIncome - totalBudget) * mult)}
             </div>
             <p className="text-xs text-muted-foreground">after all budgeted expenses</p>
           </CardContent>
@@ -258,7 +282,9 @@ export function ExpensesPage() {
                 .map((key) => findCatByKey(key))
                 .filter(Boolean) as typeof categories
 
-              const groupBudget = groupCats.reduce((s, c) => s + (c.monthlyBudget ?? 0), 0)
+              const groupBudget = groupCats
+                .filter((c) => !isTaxCategory(c))
+                .reduce((s, c) => s + (c.monthlyBudget ?? 0), 0)
 
               return (
                 <Card key={group.label}>
@@ -266,7 +292,7 @@ export function ExpensesPage() {
                     <CardTitle className="flex items-center justify-between text-sm">
                       <span>{group.label}</span>
                       <span className="text-muted-foreground font-normal">
-                        {formatCHF(groupBudget)}/mo
+                        {formatCHF(groupBudget * mult)}/{viewMode === "yearly" ? "yr" : "mo"}
                       </span>
                     </CardTitle>
                   </CardHeader>
@@ -283,10 +309,11 @@ export function ExpensesPage() {
                                 {cat.name}
                                 <span className="text-xs text-muted-foreground ml-1">(from Tax page, not in budget total)</span>
                               </span>
-                              <span className="text-sm text-muted-foreground">{formatCHF(Math.round(monthlyTax))}</span>
+                              <span className="text-sm text-muted-foreground">{formatCHF(Math.round(monthlyTax * mult))}</span>
                             </div>
                           )
                         }
+                        const budgetValue = cat.monthlyBudget ?? 0
                         return (
                           <div
                             key={cat.id}
@@ -299,13 +326,23 @@ export function ExpensesPage() {
                             <span className="text-sm flex-1 min-w-0 truncate">{cat.name}</span>
                             <div className="flex items-center gap-1 shrink-0">
                               <span className="text-xs text-muted-foreground">CHF</span>
-                              <Input
-                                type="number"
-                                value={cat.monthlyBudget ?? ""}
-                                onChange={(e) => updateCategoryBudget(cat.id, Number(e.target.value))}
-                                placeholder={defaultDef?.typicalMonthly?.toString() ?? "—"}
-                                className="h-7 w-24 text-sm text-right"
-                              />
+                              {viewMode === "monthly" ? (
+                                <Input
+                                  type="number"
+                                  value={budgetValue || ""}
+                                  onChange={(e) => updateCategoryBudget(cat.id, Number(e.target.value))}
+                                  placeholder={defaultDef?.typicalMonthly?.toString() ?? "—"}
+                                  className="h-7 w-24 text-sm text-right"
+                                />
+                              ) : (
+                                <Input
+                                  type="number"
+                                  value={budgetValue * 12 || ""}
+                                  onChange={(e) => updateCategoryBudget(cat.id, Math.round(Number(e.target.value) / 12))}
+                                  placeholder={defaultDef?.typicalMonthly ? String(defaultDef.typicalMonthly * 12) : "—"}
+                                  className="h-7 w-24 text-sm text-right"
+                                />
+                              )}
                             </div>
                           </div>
                         )
