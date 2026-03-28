@@ -7,7 +7,7 @@ import {
   onSnapshot,
   serverTimestamp,
   query,
-  arrayUnion,
+  getDoc,
 } from "firebase/firestore"
 import { db } from "@/lib/firebase"
 import { useAuthStore } from "@/store"
@@ -79,16 +79,54 @@ export function useAssets() {
   const updateAssetValue = useCallback(
     async (id: string, newValue: number) => {
       if (!familyId) throw new Error("No family")
+      const ref = doc(db, "families", familyId, "assets", id)
+      const snap = await getDoc(ref)
+      const existing = (snap.data()?.valueHistory ?? []) as Array<{ date: string; value: number }>
       const today = new Date().toISOString().split("T")[0]
-      await setDoc(
-        doc(db, "families", familyId, "assets", id),
-        {
-          currentValue: newValue,
-          valueHistory: arrayUnion({ date: today, value: newValue }),
-          updatedAt: serverTimestamp(),
-        },
-        { merge: true }
-      )
+      // Append new entry (don't replace same-day — each update is a snapshot)
+      const updated = [...existing, { date: today, value: newValue }]
+        .sort((a, b) => a.date.localeCompare(b.date))
+      await setDoc(ref, {
+        currentValue: newValue,
+        valueHistory: updated,
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
+    },
+    [familyId]
+  )
+
+  const addHistoricValue = useCallback(
+    async (id: string, date: string, value: number) => {
+      if (!familyId) throw new Error("No family")
+      const ref = doc(db, "families", familyId, "assets", id)
+      const snap = await getDoc(ref)
+      const existing = (snap.data()?.valueHistory ?? []) as Array<{ date: string; value: number }>
+      const updated = [...existing, { date, value }]
+        .sort((a, b) => a.date.localeCompare(b.date))
+      // Update currentValue to the latest entry
+      const latest = updated[updated.length - 1]
+      await setDoc(ref, {
+        currentValue: latest.value,
+        valueHistory: updated,
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
+    },
+    [familyId]
+  )
+
+  const deleteHistoricValue = useCallback(
+    async (id: string, index: number) => {
+      if (!familyId) throw new Error("No family")
+      const ref = doc(db, "families", familyId, "assets", id)
+      const snap = await getDoc(ref)
+      const existing = (snap.data()?.valueHistory ?? []) as Array<{ date: string; value: number }>
+      const updated = existing.filter((_, i) => i !== index)
+      const latest = updated[updated.length - 1]
+      await setDoc(ref, {
+        currentValue: latest?.value ?? 0,
+        valueHistory: updated,
+        updatedAt: serverTimestamp(),
+      }, { merge: true })
     },
     [familyId]
   )
@@ -101,5 +139,5 @@ export function useAssets() {
     [familyId]
   )
 
-  return { assets, loading, error, addAsset, updateAsset, updateAssetValue, deleteAsset }
+  return { assets, loading, error, addAsset, updateAsset, updateAssetValue, addHistoricValue, deleteHistoricValue, deleteAsset }
 }

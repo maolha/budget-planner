@@ -9,7 +9,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Plus, Trash2, TrendingUp, TrendingDown, Landmark, Banknote, History } from "lucide-react"
+import { Plus, Trash2, TrendingUp, TrendingDown, Landmark, Banknote, History, ArrowUpDown } from "lucide-react"
 import {
   PieChart,
   Pie,
@@ -50,9 +50,16 @@ const TYPE_LABELS: Record<string, string> = Object.fromEntries([
 ])
 
 export function AssetsPage() {
-  const { assets, loading, addAsset, updateAsset, updateAssetValue, deleteAsset } = useAssets()
+  const { assets, loading, addAsset, updateAsset, updateAssetValue, addHistoricValue, deleteHistoricValue, deleteAsset } = useAssets()
   const { family } = useFamily()
   const [expandedHistory, setExpandedHistory] = useState<string | null>(null)
+  const [sortKey, setSortKey] = useState<"name" | "type" | "owner" | "institution" | "value">("name")
+  const [sortAsc, setSortAsc] = useState(true)
+
+  const handleSort = (key: typeof sortKey) => {
+    if (sortKey === key) setSortAsc(!sortAsc)
+    else { setSortKey(key); setSortAsc(true) }
+  }
 
   // Build owner options from family members
   const ownerOptions = useMemo(() => {
@@ -84,10 +91,30 @@ export function AssetsPage() {
   const [newLiabInstitution, setNewLiabInstitution] = useState("")
   const [newLiabOwner, setNewLiabOwner] = useState("family")
 
-  const netWorth = useMemo(() => calculateNetWort(assets), [assets])
+  const netWorth = useMemo(() => calculateNetWorth(assets), [assets])
 
-  const assetItems = assets.filter((a) => !LIABILITY_TYPE_SET.has(a.type))
-  const liabilityItems = assets.filter((a) => LIABILITY_TYPE_SET.has(a.type))
+  const getOwnerLabel = (a: Asset) => {
+    const opt = ownerOptions.find((o) => o.id === (a.ownerId ?? "family"))
+    return opt?.label ?? "Family"
+  }
+
+  const sortItems = (items: Asset[]) => {
+    const sorted = [...items].sort((a, b) => {
+      let cmp = 0
+      switch (sortKey) {
+        case "name": cmp = a.name.localeCompare(b.name); break
+        case "type": cmp = (TYPE_LABELS[a.type] ?? "").localeCompare(TYPE_LABELS[b.type] ?? ""); break
+        case "owner": cmp = getOwnerLabel(a).localeCompare(getOwnerLabel(b)); break
+        case "institution": cmp = (a.institution ?? "").localeCompare(b.institution ?? ""); break
+        case "value": cmp = a.currentValue - b.currentValue; break
+      }
+      return sortAsc ? cmp : -cmp
+    })
+    return sorted
+  }
+
+  const assetItems = sortItems(assets.filter((a) => !LIABILITY_TYPE_SET.has(a.type)))
+  const liabilityItems = sortItems(assets.filter((a) => LIABILITY_TYPE_SET.has(a.type)))
 
   const handleAddRow = async () => {
     if (!newName || !newValue) return
@@ -242,11 +269,14 @@ export function AssetsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b text-left text-muted-foreground">
-                    <th className="pb-2 font-medium">Name</th>
-                    <th className="pb-2 font-medium">Type</th>
-                    <th className="pb-2 font-medium">Owner</th>
-                    <th className="pb-2 font-medium">Institution</th>
-                    <th className="pb-2 font-medium text-right">Value (CHF)</th>
+                    {([["name", "Name"], ["type", "Type"], ["owner", "Owner"], ["institution", "Institution"]] as const).map(([key, label]) => (
+                      <th key={key} className="pb-2 font-medium cursor-pointer select-none hover:text-foreground" onClick={() => handleSort(key)}>
+                        <span className="inline-flex items-center gap-1">{label}{sortKey === key && <ArrowUpDown className="h-3 w-3" />}</span>
+                      </th>
+                    ))}
+                    <th className="pb-2 font-medium text-right cursor-pointer select-none hover:text-foreground" onClick={() => handleSort("value")}>
+                      <span className="inline-flex items-center gap-1 justify-end">Value (CHF){sortKey === "value" && <ArrowUpDown className="h-3 w-3" />}</span>
+                    </th>
                     <th className="pb-2 font-medium text-right">Change</th>
                     <th className="pb-2 w-16"></th>
                   </tr>
@@ -257,9 +287,10 @@ export function AssetsPage() {
                       key={asset.id}
                       asset={asset}
                       ownerOptions={ownerOptions}
-
                       onUpdateValue={(v) => updateAssetValue(asset.id, v)}
                       onUpdateOwner={(ownerId) => updateAsset(asset.id, { ownerId })}
+                      onAddHistoric={(date, value) => addHistoricValue(asset.id, date, value)}
+                      onDeleteHistoric={(idx) => deleteHistoricValue(asset.id, idx)}
                       onDelete={() => deleteAsset(asset.id)}
                       expanded={expandedHistory === asset.id}
                       onToggleHistory={() =>
@@ -391,6 +422,8 @@ export function AssetsPage() {
                     ownerOptions={ownerOptions}
                     onUpdateValue={(v) => updateAssetValue(asset.id, v)}
                     onUpdateOwner={(ownerId) => updateAsset(asset.id, { ownerId })}
+                    onAddHistoric={(date, value) => addHistoricValue(asset.id, date, value)}
+                    onDeleteHistoric={(idx) => deleteHistoricValue(asset.id, idx)}
                     onDelete={() => deleteAsset(asset.id)}
                     expanded={expandedHistory === asset.id}
                     onToggleHistory={() =>
@@ -494,6 +527,8 @@ function AssetRow({
   ownerOptions,
   onUpdateValue,
   onUpdateOwner,
+  onAddHistoric,
+  onDeleteHistoric,
   onDelete,
   expanded,
   onToggleHistory,
@@ -502,19 +537,33 @@ function AssetRow({
   ownerOptions: Array<{ id: string; label: string }>
   onUpdateValue: (v: number) => void
   onUpdateOwner: (ownerId: string) => void
+  onAddHistoric: (date: string, value: number) => void
+  onDeleteHistoric: (index: number) => void
   onDelete: () => void
   expanded: boolean
   onToggleHistory: () => void
 }) {
   const [editingValue, setEditingValue] = useState(false)
   const [draftValue, setDraftValue] = useState(asset.currentValue)
+  const [addingHistoric, setAddingHistoric] = useState(false)
+  const [historicDate, setHistoricDate] = useState("")
+  const [historicValue, setHistoricValue] = useState(0)
 
   const history = asset.valueHistory ?? []
-  const prevEntry = history.length >= 2 ? history[history.length - 2] : null
+  const sorted = [...history].sort((a, b) => a.date.localeCompare(b.date))
+  const prevEntry = sorted.length >= 2 ? sorted[sorted.length - 2] : null
   const change = prevEntry ? asset.currentValue - prevEntry.value : null
   const changePercent = prevEntry && prevEntry.value > 0
     ? ((asset.currentValue - prevEntry.value) / prevEntry.value) * 100
     : null
+
+  const handleAddHistoric = () => {
+    if (!historicDate || !historicValue) return
+    onAddHistoric(historicDate, historicValue)
+    setHistoricDate("")
+    setHistoricValue(0)
+    setAddingHistoric(false)
+  }
 
   return (
     <>
@@ -563,7 +612,7 @@ function AssetRow({
                   if (draftValue !== asset.currentValue) onUpdateValue(draftValue)
                   setEditingValue(false)
                 }
-                if (e.key === "Escape") setEditingValue(false)
+                if (e.key === "Escape") { setDraftValue(asset.currentValue); setEditingValue(false) }
               }}
             />
           ) : (
@@ -588,35 +637,71 @@ function AssetRow({
         </td>
         <td className="py-2">
           <div className="flex gap-1 justify-end">
-            {history.length > 1 && (
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggleHistory} title="Value history">
-                <History className="h-3 w-3" />
-              </Button>
-            )}
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onToggleHistory} title="Value history">
+              <History className="h-3 w-3" />
+            </Button>
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onDelete}>
               <Trash2 className="h-3 w-3 text-destructive" />
             </Button>
           </div>
         </td>
       </tr>
-      {expanded && history.length > 1 && (
+      {expanded && (
         <tr>
           <td colSpan={7} className="pb-3 pl-6">
             <div className="rounded border bg-muted/20 p-3">
-              <p className="text-xs font-medium text-muted-foreground mb-2">Value History</p>
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-muted-foreground">Value History ({sorted.length} entries)</p>
+                {!addingHistoric && (
+                  <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setAddingHistoric(true)}>
+                    <Plus className="h-3 w-3 mr-1" /> Add Historic Value
+                  </Button>
+                )}
+              </div>
+              {addingHistoric && (
+                <div className="flex items-center gap-2 mb-2 pb-2 border-b">
+                  <Input
+                    type="date"
+                    value={historicDate}
+                    onChange={(e) => setHistoricDate(e.target.value)}
+                    className="h-7 w-36 text-xs"
+                    autoFocus
+                  />
+                  <Input
+                    type="number"
+                    value={historicValue || ""}
+                    onChange={(e) => setHistoricValue(Number(e.target.value))}
+                    placeholder="Value"
+                    className="h-7 w-28 text-xs text-right"
+                    onKeyDown={(e) => { if (e.key === "Enter") handleAddHistoric() }}
+                  />
+                  <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={handleAddHistoric}>Save</Button>
+                  <Button variant="ghost" size="sm" className="h-6 text-xs px-2" onClick={() => setAddingHistoric(false)}>Cancel</Button>
+                </div>
+              )}
               <div className="space-y-1">
-                {[...history].reverse().map((entry, i) => {
-                  const prev = i < history.length - 1 ? [...history].reverse()[i + 1] : null
-                  const diff = prev ? entry.value - prev.value : null
+                {[...sorted].reverse().map((entry, i) => {
+                  const origIndex = sorted.length - 1 - i
+                  const prevIdx = i < sorted.length - 1 ? [...sorted].reverse()[i + 1] : null
+                  const diff = prevIdx ? entry.value - prevIdx.value : null
                   return (
-                    <div key={i} className="flex justify-between text-xs">
+                    <div key={i} className="flex items-center justify-between text-xs group">
                       <span className="text-muted-foreground">{formatDate(entry.date, "dd MMM yyyy")}</span>
-                      <div className="flex gap-3">
+                      <div className="flex items-center gap-3">
                         <span>{formatCHF(entry.value)}</span>
                         {diff !== null && (
-                          <span className={diff >= 0 ? "text-green-600" : "text-red-600"}>
+                          <span className={`w-20 text-right ${diff >= 0 ? "text-green-600" : "text-red-600"}`}>
                             {diff >= 0 ? "+" : ""}{formatCHF(diff)}
                           </span>
+                        )}
+                        {sorted.length > 1 && (
+                          <button
+                            className="opacity-0 group-hover:opacity-100 text-destructive hover:text-destructive/80"
+                            onClick={() => onDeleteHistoric(origIndex)}
+                            title="Remove this entry"
+                          >
+                            <Trash2 className="h-3 w-3" />
+                          </button>
                         )}
                       </div>
                     </div>
@@ -629,8 +714,4 @@ function AssetRow({
       )}
     </>
   )
-}
-
-function calculateNetWort(assets: Asset[]) {
-  return calculateNetWorth(assets)
 }
