@@ -20,7 +20,6 @@ import {
 } from "@/components/ui/dialog"
 import { Plus, Trash2, TrendingUp, GitBranch, Loader2 } from "lucide-react"
 import {
-  LineChart,
   Line,
   XAxis,
   YAxis,
@@ -30,6 +29,7 @@ import {
   ResponsiveContainer,
   ComposedChart,
   Bar,
+  ReferenceLine,
 } from "recharts"
 import { runForecast, compareForcasts } from "@/engine/forecast/forecast-engine"
 import { LIFE_EVENT_TYPES } from "@/lib/constants"
@@ -134,66 +134,70 @@ export function ForecastPage() {
     [scenarios, startDate, endDate, netWorth.netWorth, monthlyNetIncome, effectiveExpenses, baseEvents, effectiveReturn]
   )
 
-  // Build detailed chart with base income, bonus, expenses — full bonus logic for all months
+  // Build combined chart data using baseForecast (applies life events) + bonus timeline
   const fullTimeline = useMemo(
     () => buildIncomeTimeline(currentIncomes, forecastYears * 12),
     [currentIncomes, forecastYears]
   )
 
-  const detailedChartData = useMemo(() => {
+  // Primary chart: income/expenses/savings with life events applied
+  const combinedChartData = useMemo(() => {
     const data: Array<{
       date: string
-      baseIncome: number
+      income: number
       bonusIncome: number
       expenses: number
-      cashFlow: number
+      savings: number
       netWorth: number
+      event?: string
     }> = []
 
-    let nw = netWorth.netWorth
-    const monthlyReturnRate = Math.pow(1 + effectiveReturn / 100, 1 / 12) - 1
-    const totalMonths = forecastYears * 12
-
-    for (let i = 0; i < totalMonths; i++) {
+    const months = baseForecast.months
+    for (let i = 0; i < months.length; i++) {
+      if (i % 3 !== 0) continue // quarterly for readability
+      const m = months[i]
+      // Overlay bonus from timeline onto the forecast income
       const tl = fullTimeline[i]
-      if (!tl) break
+      const bonusGross = tl?.bonusIncome ?? 0
+      const bonusNet = Math.round(bonusGross * (1 - taxRatio))
+      const eventLabel = m.events.length > 0 ? m.events.join(", ") : undefined
 
-      const baseIncome = Math.round(tl.baseIncome * (1 - taxRatio))
-      const bonusIncome = Math.round(tl.bonusIncome * (1 - taxRatio))
-
-      const cashFlow = baseIncome + bonusIncome - effectiveExpenses
-      if (nw > 0) nw += nw * monthlyReturnRate
-      nw += cashFlow
-
-      // Only include quarterly points for readability
-      if (i % 3 === 0) {
-        data.push({
-          date: tl.month,
-          baseIncome,
-          bonusIncome,
-          expenses: effectiveExpenses,
-          cashFlow: Math.round(cashFlow),
-          netWorth: Math.round(nw),
-        })
-      }
+      data.push({
+        date: m.date,
+        income: m.income,
+        bonusIncome: bonusNet,
+        expenses: m.expenses,
+        savings: m.savings,
+        netWorth: m.netWorth,
+        event: eventLabel,
+      })
     }
     return data
-  }, [fullTimeline, taxRatio, effectiveExpenses, effectiveReturn, netWorth.netWorth, forecastYears])
+  }, [baseForecast.months, fullTimeline, taxRatio])
 
-  // Net worth chart with scenarios
-  const chartData = baseForecast.months
-    .filter((_, i) => i % 3 === 0)
-    .map((m, i) => {
-      const point: Record<string, string | number> = {
-        date: m.date,
-        "Base": m.netWorth,
-      }
-      for (const s of scenarioForecasts) {
-        const idx = i * 3
-        point[s.name] = s.forecast.months[idx]?.netWorth ?? 0
-      }
-      return point
-    })
+  // Scenario comparison data
+  const scenarioChartData = useMemo(() => {
+    return baseForecast.months
+      .filter((_, i) => i % 3 === 0)
+      .map((m, i) => {
+        const point: Record<string, string | number> = {
+          date: m.date,
+          "Base Income": m.income,
+          "Base Expenses": m.expenses,
+          "Base Net Worth": m.netWorth,
+        }
+        for (const s of scenarioForecasts) {
+          const idx = i * 3
+          const sm = s.forecast.months[idx]
+          if (sm) {
+            point[`${s.name} Income`] = sm.income
+            point[`${s.name} Expenses`] = sm.expenses
+            point[`${s.name} Net Worth`] = sm.netWorth
+          }
+        }
+        return point
+      })
+  }, [baseForecast.months, scenarioForecasts])
 
   const addEvent = (targetScenarioId: string | null) => {
     const params: Record<string, unknown> = {}
@@ -477,60 +481,78 @@ export function ForecastPage() {
         </Card>
       </div>
 
-      {/* Cash flow chart with base/bonus split */}
+      {/* Combined cash flow + projection chart */}
       <Card>
         <CardHeader>
-          <CardTitle>Cash Flow Projection (Base + Bonus)</CardTitle>
+          <CardTitle>Income, Expenses & Cash Flow</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-80">
+          <div className="h-96">
             <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart data={detailedChartData}>
+              <ComposedChart data={combinedChartData}>
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={3} />
-                <YAxis tickFormatter={formatAxisCHF} />
-                <Tooltip formatter={(v) => formatCHF(Number(v))} />
+                <YAxis yAxisId="flow" tickFormatter={formatAxisCHF} />
+                <YAxis yAxisId="nw" orientation="right" tickFormatter={formatAxisCHF} />
+                <Tooltip
+                  formatter={(v, name) => [formatCHF(Number(v)), name]}
+                  labelFormatter={(label) => {
+                    const d = combinedChartData.find((p) => p.date === label)
+                    return d?.event ? `${label} — ${d.event}` : label
+                  }}
+                />
                 <Legend />
-                <Bar dataKey="baseIncome" name="Base Income" fill="#22c55e" stackId="income" />
-                <Bar dataKey="bonusIncome" name="Bonus" fill="#f59e0b" stackId="income" radius={[2, 2, 0, 0]} />
-                <Line type="monotone" dataKey="expenses" name="Expenses" stroke="#ef4444" strokeWidth={2} dot={false} />
+                <Bar yAxisId="flow" dataKey="income" name="Income (net)" fill="#22c55e" stackId="in" />
+                <Bar yAxisId="flow" dataKey="bonusIncome" name="Bonus" fill="#f59e0b" stackId="in" radius={[2, 2, 0, 0]} />
+                <Line yAxisId="flow" type="monotone" dataKey="expenses" name="Expenses" stroke="#ef4444" strokeWidth={2} dot={false} />
+                <Line yAxisId="nw" type="monotone" dataKey="netWorth" name="Net Worth" stroke="#3b82f6" strokeWidth={2} dot={false} strokeDasharray="5 5" />
+                {/* Mark life events */}
+                {combinedChartData.filter((d) => d.event).map((d) => (
+                  <ReferenceLine key={d.date} x={d.date} yAxisId="flow" stroke="#8b5cf6" strokeDasharray="3 3" label={{ value: d.event?.substring(0, 15), position: "top", fontSize: 9, fill: "#8b5cf6" }} />
+                ))}
               </ComposedChart>
             </ResponsiveContainer>
           </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Left axis: monthly income/expenses. Right axis: cumulative net worth. Purple dashed lines mark life events.
+          </p>
         </CardContent>
       </Card>
 
-      {/* Net worth scenarios chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Net Worth Projection</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="date" tick={{ fontSize: 11 }} />
-                <YAxis tickFormatter={formatAxisCHF} />
-                <Tooltip formatter={(v) => formatCHF(Number(v))} />
-                <Legend />
-                <Line type="monotone" dataKey="Base" stroke={COLORS[0]} strokeWidth={2} dot={false} />
-                {scenarioForecasts.map((s, i) => (
-                  <Line
-                    key={s.id}
-                    type="monotone"
-                    dataKey={s.name}
-                    stroke={COLORS[(i + 1) % COLORS.length]}
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                    dot={false}
-                  />
-                ))}
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Scenario comparison chart (only shown when scenarios exist) */}
+      {scenarios.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Scenario Comparison</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              <ResponsiveContainer width="100%" height="100%">
+                <ComposedChart data={scenarioChartData}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} interval={3} />
+                  <YAxis yAxisId="flow" tickFormatter={formatAxisCHF} />
+                  <YAxis yAxisId="nw" orientation="right" tickFormatter={formatAxisCHF} />
+                  <Tooltip formatter={(v) => formatCHF(Number(v))} />
+                  <Legend />
+                  <Line yAxisId="flow" type="monotone" dataKey="Base Income" stroke="#22c55e" strokeWidth={2} dot={false} />
+                  <Line yAxisId="flow" type="monotone" dataKey="Base Expenses" stroke="#ef4444" strokeWidth={2} dot={false} />
+                  <Line yAxisId="nw" type="monotone" dataKey="Base Net Worth" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                  {scenarioForecasts.map((s, i) => (
+                    <Line key={`${s.id}-nw`} yAxisId="nw" type="monotone" dataKey={`${s.name} Net Worth`} stroke={COLORS[(i + 1) % COLORS.length]} strokeWidth={2} dot={false} strokeDasharray="5 5" />
+                  ))}
+                  {scenarioForecasts.map((s, i) => (
+                    <Line key={`${s.id}-inc`} yAxisId="flow" type="monotone" dataKey={`${s.name} Income`} stroke={COLORS[(i + 1) % COLORS.length]} strokeWidth={1} dot={false} strokeDasharray="3 3" />
+                  ))}
+                  {scenarioForecasts.map((s, i) => (
+                    <Line key={`${s.id}-exp`} yAxisId="flow" type="monotone" dataKey={`${s.name} Expenses`} stroke={COLORS[(i + 1) % COLORS.length]} strokeWidth={1} dot={false} strokeDasharray="8 4" />
+                  ))}
+                </ComposedChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Life events timeline */}
       <Card>

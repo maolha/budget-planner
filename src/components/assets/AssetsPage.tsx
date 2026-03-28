@@ -217,6 +217,47 @@ export function AssetsPage() {
         </Card>
       </div>
 
+      {/* Per-member breakdown */}
+      {ownerOptions.length > 1 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Net Worth by Family Member</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {ownerOptions.map((owner) => {
+                const memberAssets = assets.filter((a) =>
+                  (a.ownerId ?? "family") === owner.id && !LIABILITY_TYPE_SET.has(a.type)
+                )
+                const memberLiabs = assets.filter((a) =>
+                  (a.ownerId ?? "family") === owner.id && LIABILITY_TYPE_SET.has(a.type)
+                )
+                const totalAssets = memberAssets.reduce((s, a) => s + a.currentValue, 0)
+                const totalLiabs = memberLiabs.reduce((s, a) => s + a.currentValue, 0)
+                const memberMortgage = memberAssets.reduce((s, a) => s + (a.mortgageBalance ?? 0), 0)
+                const net = totalAssets - totalLiabs - memberMortgage
+                if (totalAssets === 0 && totalLiabs === 0) return null
+                return (
+                  <div key={owner.id} className="rounded-lg border p-3">
+                    <p className="text-sm font-medium">{owner.label}</p>
+                    <p className={`text-lg font-bold ${net >= 0 ? "text-green-600" : "text-red-600"}`}>
+                      {formatCHF(net)}
+                    </p>
+                    <div className="text-xs text-muted-foreground space-y-0.5 mt-1">
+                      <p>Assets: {formatCHF(totalAssets)}</p>
+                      {(totalLiabs + memberMortgage) > 0 && (
+                        <p className="text-red-500">Liabilities: -{formatCHF(totalLiabs + memberMortgage)}</p>
+                      )}
+                      <p>{memberAssets.length + memberLiabs.length} items</p>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid gap-6 lg:grid-cols-3">
         {/* Pie chart */}
         <Card>
