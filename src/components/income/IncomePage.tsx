@@ -337,7 +337,9 @@ export function IncomePage() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCHF(totalMonthlyGross)}</div>
-            <p className="text-xs text-muted-foreground">base + bonus avg</p>
+            <p className="text-xs text-muted-foreground">
+              {formatCHF(Math.round(totalAnnualBase / 12))} + {formatCHF(Math.round(totalAnnualBonus / 12))} bonus
+            </p>
           </CardContent>
         </Card>
         <Card>
