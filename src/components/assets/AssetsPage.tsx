@@ -157,7 +157,8 @@ export function AssetsPage() {
     { name: "Liquid", value: netWorth.breakdown.liquid, color: "#3b82f6" },
     { name: "Investments", value: netWorth.breakdown.investments, color: "#8b5cf6" },
     { name: "Property", value: netWorth.breakdown.property, color: "#f59e0b" },
-    { name: "Pension", value: netWorth.breakdown.pension, color: "#06b6d4" },
+    { name: "Pension (BVG)", value: netWorth.breakdown.pension2ndPillar, color: "#06b6d4" },
+    { name: "Pension (3a)", value: netWorth.breakdown.pension3a, color: "#059669" },
     { name: "Crypto", value: netWorth.breakdown.crypto, color: "#f97316" },
     { name: "Other", value: netWorth.breakdown.other, color: "#94a3b8" },
   ].filter((d) => d.value > 0)

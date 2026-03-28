@@ -288,36 +288,17 @@ export function DashboardPage() {
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="month" tick={{ fontSize: 10 }} interval={2} />
                   <YAxis
-                    yAxisId="balance"
+                    yAxisId="flow"
                     tickFormatter={formatAxisCHF}
                   />
                   <YAxis
-                    yAxisId="flow"
+                    yAxisId="balance"
                     orientation="right"
                     tickFormatter={formatAxisCHF}
                   />
                   <Tooltip formatter={(v) => formatCHF(Number(v))} />
                   <Legend />
                   <ReferenceLine yAxisId="flow" y={0} stroke="#666" strokeDasharray="3 3" />
-                  <Area
-                    yAxisId="balance"
-                    type="monotone"
-                    dataKey="cashBalance"
-                    name="Cash Balance"
-                    fill="#3b82f620"
-                    stroke="#3b82f6"
-                    strokeWidth={2}
-                  />
-                  <Area
-                    yAxisId="balance"
-                    type="monotone"
-                    dataKey="netWorth"
-                    name="Net Worth"
-                    fill="#8b5cf610"
-                    stroke="#8b5cf6"
-                    strokeWidth={2}
-                    strokeDasharray="5 5"
-                  />
                   <Bar
                     yAxisId="flow"
                     dataKey="netIncome"
@@ -343,10 +324,25 @@ export function DashboardPage() {
                     strokeWidth={2}
                     dot={false}
                   />
+                  <Area
+                    yAxisId="balance"
+                    type="monotone"
+                    dataKey="cashBalance"
+                    name="Cash Balance"
+                    fill="#3b82f620"
+                    stroke="#3b82f6"
+                    strokeWidth={2}
+                  />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4 text-center text-sm">
+            <div className="mt-4 grid grid-cols-3 gap-4 text-center text-sm">
+              <div>
+                <p className="text-muted-foreground">Monthly Savings</p>
+                <p className={`font-semibold ${monthlySavings >= 0 ? "text-green-600" : "text-red-600"}`}>
+                  {formatCHF(monthlySavings)}
+                </p>
+              </div>
               <div>
                 <p className="text-muted-foreground">Cash in 12m</p>
                 <p className="font-semibold">{formatCHF(cashFlowOutlook[11]?.cashBalance ?? 0)}</p>
@@ -354,14 +350,6 @@ export function DashboardPage() {
               <div>
                 <p className="text-muted-foreground">Cash in 24m</p>
                 <p className="font-semibold">{formatCHF(cashFlowOutlook[23]?.cashBalance ?? 0)}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Net Worth in 12m</p>
-                <p className="font-semibold">{formatCHF(cashFlowOutlook[11]?.netWorth ?? 0)}</p>
-              </div>
-              <div>
-                <p className="text-muted-foreground">Net Worth in 24m</p>
-                <p className="font-semibold">{formatCHF(cashFlowOutlook[23]?.netWorth ?? 0)}</p>
               </div>
             </div>
           </CardContent>
@@ -417,7 +405,8 @@ export function DashboardPage() {
                   { label: "Liquid Assets", value: netWorth.breakdown.liquid, color: "#3b82f6" },
                   { label: "Investments", value: netWorth.breakdown.investments, color: "#8b5cf6" },
                   { label: "Property", value: netWorth.breakdown.property, color: "#f59e0b" },
-                  { label: "Pension", value: netWorth.breakdown.pension, color: "#06b6d4" },
+                  { label: "Pension (BVG)", value: netWorth.breakdown.pension2ndPillar, color: "#06b6d4" },
+                  { label: "Pension (3a)", value: netWorth.breakdown.pension3a, color: "#059669" },
                   { label: "Crypto", value: netWorth.breakdown.crypto, color: "#f97316" },
                 ].filter((d) => d.value > 0).map((item) => (
                   <div key={item.label} className="flex items-center justify-between">

@@ -7,7 +7,8 @@ export interface NetWorthSnapshot {
     liquid: number
     investments: number
     property: number
-    pension: number
+    pension2ndPillar: number
+    pension3a: number
     crypto: number
     other: number
     mortgages: number

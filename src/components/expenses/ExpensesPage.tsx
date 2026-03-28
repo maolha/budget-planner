@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect, useRef } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -72,6 +72,33 @@ export function ExpensesPage() {
     [grossForCalc, filingStatus, numChildren, family?.municipality, family?.churchTax]
   )
   const monthlyNetIncome = Math.round((grossForCalc - taxForCalc.total) / 12)
+
+  // Full tax (always based on total gross, for budget category sync)
+  const fullTaxResult = useMemo(
+    () => calculateTaxSimple(totalAnnualGross, filingStatus, numChildren, {
+      municipality: family?.municipality ?? "Zürich",
+      churchTax: family?.churchTax ?? false,
+      pension3a: family?.pension3aOverride,
+      otherDeductions: family?.otherDeductions,
+    }),
+    [totalAnnualGross, filingStatus, numChildren, family?.municipality, family?.churchTax, family?.pension3aOverride, family?.otherDeductions]
+  )
+
+  // Auto-sync calculated monthly tax into the "Taxes" budget category
+  const taxSyncRef = useRef(0)
+  useEffect(() => {
+    const monthlyTax = fullTaxResult.monthlyTax
+    if (monthlyTax <= 0 || categories.length === 0) return
+    const rounded = Math.round(monthlyTax / 100) * 100 // round to nearest 100
+    if (rounded === taxSyncRef.current) return // avoid loops
+    const taxCat = categories.find((c) =>
+      c.name.toLowerCase().replace(/[^a-z]+/g, "").includes("tax")
+    )
+    if (taxCat && (taxCat.monthlyBudget ?? 0) !== rounded) {
+      taxSyncRef.current = rounded
+      updateCategoryBudget(taxCat.id, rounded)
+    }
+  }, [fullTaxResult.monthlyTax, categories, updateCategoryBudget])
 
   // Current month totals
   const now = new Date()

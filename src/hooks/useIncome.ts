@@ -97,50 +97,12 @@ export function useIncome() {
   const totalAnnualGross = totalAnnualBase + totalAnnualBonus
   const totalMonthlyGross = Math.round(totalAnnualGross / 12)
 
-  // Build a 24-month cash flow timeline with bonus payout timing
+  // Build income timeline with bonus payout timing
   // Records with no endDate project indefinitely; records with endDate stop when it's passed
-  const incomeTimeline = useMemo(() => {
-    const timeline: Array<{
-      month: string       // YYYY-MM
-      baseIncome: number  // monthly salary (gross)
-      bonusIncome: number // bonus paid this month (gross)
-      totalIncome: number
-    }> = []
-
-    for (let i = 0; i < 24; i++) {
-      const d = new Date()
-      d.setMonth(d.getMonth() + i)
-      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
-      const calMonth = d.getMonth() + 1 // 1-12
-
-      let baseIncome = 0
-      let bonusIncome = 0
-
-      for (const inc of currentIncomes) {
-        // Skip if this income has ended before this month
-        if (inc.endDate && inc.endDate < ym) continue
-
-        const monthlyBase = Math.round(Number(inc.annualGross || 0) / 12)
-        baseIncome += monthlyBase
-
-        const bonus = Number(inc.bonus || 0)
-        if (bonus <= 0) continue
-
-        const freq = inc.bonusFrequency ?? "annual"
-        const payoutMonths = inc.bonusPayoutMonths?.length
-          ? inc.bonusPayoutMonths
-          : getDefaultPayoutMonths(freq)
-
-        if (payoutMonths.includes(calMonth)) {
-          bonusIncome += Math.round(bonus / payoutMonths.length)
-        }
-      }
-
-      timeline.push({ month: ym, baseIncome, bonusIncome, totalIncome: baseIncome + bonusIncome })
-    }
-
-    return timeline
-  }, [currentIncomes])
+  const incomeTimeline = useMemo(
+    () => buildIncomeTimeline(currentIncomes, 24),
+    [currentIncomes]
+  )
 
   return {
     incomes,
@@ -153,6 +115,7 @@ export function useIncome() {
     totalAnnualBase,
     totalAnnualBonus,
     totalMonthlyGross,
+    currentIncomes,
     incomeTimeline,
   }
 }
@@ -165,4 +128,43 @@ function getDefaultPayoutMonths(freq: string): number[] {
     case "annual": return [12]
     default: return [12]
   }
+}
+
+export interface IncomeTimelineEntry {
+  month: string
+  baseIncome: number
+  bonusIncome: number
+  totalIncome: number
+}
+
+export function buildIncomeTimeline(
+  currentIncomes: IncomeRecord[],
+  months: number
+): IncomeTimelineEntry[] {
+  const timeline: IncomeTimelineEntry[] = []
+  for (let i = 0; i < months; i++) {
+    const d = new Date()
+    d.setMonth(d.getMonth() + i)
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+    const calMonth = d.getMonth() + 1
+
+    let baseIncome = 0
+    let bonusIncome = 0
+
+    for (const inc of currentIncomes) {
+      if (inc.endDate && inc.endDate < ym) continue
+      baseIncome += Math.round(Number(inc.annualGross || 0) / 12)
+      const bonus = Number(inc.bonus || 0)
+      if (bonus <= 0) continue
+      const freq = inc.bonusFrequency ?? "annual"
+      const payoutMonths = inc.bonusPayoutMonths?.length
+        ? inc.bonusPayoutMonths
+        : getDefaultPayoutMonths(freq)
+      if (payoutMonths.includes(calMonth)) {
+        bonusIncome += Math.round(bonus / payoutMonths.length)
+      }
+    }
+    timeline.push({ month: ym, baseIncome, bonusIncome, totalIncome: baseIncome + bonusIncome })
+  }
+  return timeline
 }

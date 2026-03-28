@@ -26,7 +26,7 @@ import { useFamily } from "@/hooks/useFamily"
 const PIE_COLORS = ["#3b82f6", "#22c55e", "#f59e0b", "#ef4444"]
 
 export function TaxPage() {
-  const { family } = useFamily()
+  const { family, updateFamily } = useFamily()
   const { incomes, totalAnnualGross } = useIncome()
 
   const numAdults = family?.adults?.length ?? 2
@@ -46,12 +46,16 @@ export function TaxPage() {
   const isDualIncome = memberIncomes.length >= 2 && memberIncomes[1] > 0
   const lowerIncomeDefault = memberIncomes[1] ?? 0
 
-  // Editable fields
+  // Editable fields — pension3a and otherDeductions persist to family doc
   const [grossOverride, setGrossOverride] = useState<number | null>(null)
-  const [pension3a, setPension3a] = useState(MAX_3A_EMPLOYED * numAdults)
   const [lowerIncomeOverride, setLowerIncomeOverride] = useState<number | null>(null)
   const [childAllowance, setChildAllowance] = useState(numChildren * 200 * 12) // CHF 200/child/month
-  const [otherDeductions, setOtherDeductions] = useState(0)
+
+  const pension3a = family?.pension3aOverride ?? MAX_3A_EMPLOYED * numAdults
+  const otherDeductions = family?.otherDeductions ?? 0
+
+  const setPension3a = (value: number) => { updateFamily({ pension3aOverride: value }) }
+  const setOtherDeductions = (value: number) => { updateFamily({ otherDeductions: value }) }
 
   const grossIncome = grossOverride ?? totalAnnualGross
   const lowerIncome = lowerIncomeOverride ?? lowerIncomeDefault

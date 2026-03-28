@@ -34,7 +34,7 @@ import {
 import { runForecast, compareForcasts } from "@/engine/forecast/forecast-engine"
 import { LIFE_EVENT_TYPES } from "@/lib/constants"
 import { formatCHF, formatAxisCHF } from "@/lib/formatters"
-import { useIncome } from "@/hooks/useIncome"
+import { useIncome, buildIncomeTimeline } from "@/hooks/useIncome"
 import { useExpenses } from "@/hooks/useExpenses"
 import { useAssets } from "@/hooks/useAssets"
 import { useFamily } from "@/hooks/useFamily"
@@ -51,7 +51,7 @@ interface ScenarioConfig {
 
 export function ForecastPage() {
   // Pull real data from hooks
-  const { totalAnnualGross, totalAnnualBase, totalAnnualBonus, incomeTimeline, loading: incomeLoading } = useIncome()
+  const { totalAnnualGross, currentIncomes, loading: incomeLoading } = useIncome()
   const { totalMonthlyBudget, totalMonthlyExpenses, loading: expenseLoading } = useExpenses()
   const { assets, loading: assetLoading } = useAssets()
   const { family, loading: familyLoading } = useFamily()
@@ -134,9 +134,13 @@ export function ForecastPage() {
     [scenarios, startDate, endDate, netWorth.netWorth, monthlyNetIncome, effectiveExpenses, baseEvents, effectiveReturn]
   )
 
-  // Build detailed chart with base income, bonus, expenses
+  // Build detailed chart with base income, bonus, expenses — full bonus logic for all months
+  const fullTimeline = useMemo(
+    () => buildIncomeTimeline(currentIncomes, forecastYears * 12),
+    [currentIncomes, forecastYears]
+  )
+
   const detailedChartData = useMemo(() => {
-    // Use incomeTimeline for first 24 months, then flat thereafter
     const data: Array<{
       date: string
       baseIncome: number
@@ -151,20 +155,11 @@ export function ForecastPage() {
     const totalMonths = forecastYears * 12
 
     for (let i = 0; i < totalMonths; i++) {
-      const d = new Date()
-      d.setMonth(d.getMonth() + i)
-      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`
+      const tl = fullTimeline[i]
+      if (!tl) break
 
-      let baseIncome: number
-      let bonusIncome: number
-      if (i < incomeTimeline.length) {
-        baseIncome = Math.round(incomeTimeline[i].baseIncome * (1 - taxRatio))
-        bonusIncome = Math.round(incomeTimeline[i].bonusIncome * (1 - taxRatio))
-      } else {
-        // Beyond timeline: use flat monthly averages
-        baseIncome = Math.round((totalAnnualBase * (1 - taxRatio)) / 12)
-        bonusIncome = Math.round((totalAnnualBonus * (1 - taxRatio)) / 12)
-      }
+      const baseIncome = Math.round(tl.baseIncome * (1 - taxRatio))
+      const bonusIncome = Math.round(tl.bonusIncome * (1 - taxRatio))
 
       const cashFlow = baseIncome + bonusIncome - effectiveExpenses
       if (nw > 0) nw += nw * monthlyReturnRate
@@ -173,7 +168,7 @@ export function ForecastPage() {
       // Only include quarterly points for readability
       if (i % 3 === 0) {
         data.push({
-          date: ym,
+          date: tl.month,
           baseIncome,
           bonusIncome,
           expenses: effectiveExpenses,
@@ -183,7 +178,7 @@ export function ForecastPage() {
       }
     }
     return data
-  }, [incomeTimeline, taxRatio, totalAnnualBase, totalAnnualBonus, effectiveExpenses, effectiveReturn, netWorth.netWorth, forecastYears])
+  }, [fullTimeline, taxRatio, effectiveExpenses, effectiveReturn, netWorth.netWorth, forecastYears])
 
   // Net worth chart with scenarios
   const chartData = baseForecast.months

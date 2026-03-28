@@ -5,7 +5,8 @@ import type { NetWorthSnapshot } from "./types"
 const LIQUID_TYPES = new Set(["bank_account", "savings_account", "other_liquid"])
 const INVESTMENT_TYPES = new Set(["investment"])
 const PROPERTY_TYPES = new Set(["real_estate"])
-const PENSION_TYPES = new Set(["pension_2nd_pillar", "pension_3a"])
+const PENSION_2ND_TYPES = new Set(["pension_2nd_pillar"])
+const PENSION_3A_TYPES = new Set(["pension_3a"])
 const CRYPTO_TYPES = new Set(["crypto"])
 const LIABILITY_TYPE_SET = new Set(LIABILITY_TYPES)
 
@@ -17,7 +18,8 @@ export function calculateNetWorth(assets: Asset[]): NetWorthSnapshot {
     liquid: 0,
     investments: 0,
     property: 0,
-    pension: 0,
+    pension2ndPillar: 0,
+    pension3a: 0,
     crypto: 0,
     other: 0,
     mortgages: 0,
@@ -38,8 +40,10 @@ export function calculateNetWorth(assets: Asset[]): NetWorthSnapshot {
       if (asset.mortgageBalance) {
         breakdown.mortgages += asset.mortgageBalance
       }
-    } else if (PENSION_TYPES.has(asset.type)) {
-      breakdown.pension += value
+    } else if (PENSION_2ND_TYPES.has(asset.type)) {
+      breakdown.pension2ndPillar += value
+    } else if (PENSION_3A_TYPES.has(asset.type)) {
+      breakdown.pension3a += value
     } else if (CRYPTO_TYPES.has(asset.type)) {
       breakdown.crypto += value
     } else {
@@ -51,7 +55,8 @@ export function calculateNetWorth(assets: Asset[]): NetWorthSnapshot {
     breakdown.liquid +
     breakdown.investments +
     breakdown.property +
-    breakdown.pension +
+    breakdown.pension2ndPillar +
+    breakdown.pension3a +
     breakdown.crypto +
     breakdown.other
 
@@ -66,7 +71,8 @@ export function calculateNetWorth(assets: Asset[]): NetWorthSnapshot {
       liquid: Math.round(breakdown.liquid),
       investments: Math.round(breakdown.investments),
       property: Math.round(breakdown.property),
-      pension: Math.round(breakdown.pension),
+      pension2ndPillar: Math.round(breakdown.pension2ndPillar),
+      pension3a: Math.round(breakdown.pension3a),
       crypto: Math.round(breakdown.crypto),
       other: Math.round(breakdown.other),
       mortgages: Math.round(breakdown.mortgages),

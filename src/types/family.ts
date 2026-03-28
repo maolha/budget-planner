@@ -15,6 +15,9 @@ export interface Family {
   updatedAt: Timestamp
   onboardingComplete: boolean
   baseCurrency: "CHF"
+  // Tax settings (persisted)
+  pension3aOverride?: number
+  otherDeductions?: number
 }
 
 export interface FamilyMember {
