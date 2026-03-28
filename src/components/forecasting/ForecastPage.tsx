@@ -38,16 +38,11 @@ import { useIncome, buildIncomeTimeline } from "@/hooks/useIncome"
 import { useExpenses } from "@/hooks/useExpenses"
 import { useAssets } from "@/hooks/useAssets"
 import { useFamily } from "@/hooks/useFamily"
+import { useScenarios } from "@/hooks/useScenarios"
 import { calculateTaxSimple } from "@/engine/tax/tax-engine"
 import { calculateNetWorth } from "@/engine/net-worth/net-worth-calculator"
 import type { LifeEvent, LifeEventType } from "@/types"
 import { v4 as uuid } from "uuid"
-
-interface ScenarioConfig {
-  id: string
-  name: string
-  events: LifeEvent[]
-}
 
 export function ForecastPage() {
   // Pull real data from hooks
@@ -56,7 +51,17 @@ export function ForecastPage() {
   const { assets, loading: assetLoading } = useAssets()
   const { family, loading: familyLoading } = useFamily()
 
-  const isLoading = incomeLoading || expenseLoading || assetLoading || familyLoading
+  const {
+    baseEvents,
+    alternativeScenarios: savedScenarios,
+    loading: scenarioLoading,
+    saveBaseEvents,
+    addScenario: addScenarioToDb,
+    updateScenario,
+    deleteScenario,
+  } = useScenarios()
+
+  const isLoading = incomeLoading || expenseLoading || assetLoading || familyLoading || scenarioLoading
 
   const netWorth = useMemo(() => calculateNetWorth(assets), [assets])
 
@@ -91,8 +96,13 @@ export function ForecastPage() {
 
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editingScenario, setEditingScenario] = useState<string | null>(null)
-  const [baseEvents, setBaseEvents] = useState<LifeEvent[]>([])
-  const [scenarios, setScenarios] = useState<ScenarioConfig[]>([])
+
+  // Map saved scenarios to the format the forecast engine expects
+  const scenarios = savedScenarios.map((s) => ({
+    id: s.id,
+    name: s.name,
+    events: s.lifeEvents ?? [],
+  }))
 
   // Event form state
   const [eventType, setEventType] = useState<LifeEventType>("salary_change")
@@ -199,7 +209,7 @@ export function ForecastPage() {
       })
   }, [baseForecast.months, scenarioForecasts])
 
-  const addEvent = (targetScenarioId: string | null) => {
+  const addEvent = async (targetScenarioId: string | null) => {
     const params: Record<string, unknown> = {}
     for (const [k, v] of Object.entries(eventParams)) {
       params[k] = isNaN(Number(v)) ? v : Number(v)
@@ -212,38 +222,35 @@ export function ForecastPage() {
       params,
     }
     if (targetScenarioId) {
-      setScenarios((prev) =>
-        prev.map((s) =>
-          s.id === targetScenarioId ? { ...s, events: [...s.events, event] } : s
-        )
-      )
+      const scenario = savedScenarios.find((s) => s.id === targetScenarioId)
+      if (scenario) {
+        await updateScenario(targetScenarioId, {
+          lifeEvents: [...(scenario.lifeEvents ?? []), event],
+        })
+      }
     } else {
-      setBaseEvents((prev) => [...prev, event])
+      await saveBaseEvents([...baseEvents, event])
     }
     setDialogOpen(false)
     setEventParams({})
     setEventLabel("")
   }
 
-  const removeEvent = (eventId: string, scenarioId: string | null) => {
+  const removeEvent = async (eventId: string, scenarioId: string | null) => {
     if (scenarioId) {
-      setScenarios((prev) =>
-        prev.map((s) =>
-          s.id === scenarioId
-            ? { ...s, events: s.events.filter((e) => e.id !== eventId) }
-            : s
-        )
-      )
+      const scenario = savedScenarios.find((s) => s.id === scenarioId)
+      if (scenario) {
+        await updateScenario(scenarioId, {
+          lifeEvents: (scenario.lifeEvents ?? []).filter((e) => e.id !== eventId),
+        })
+      }
     } else {
-      setBaseEvents((prev) => prev.filter((e) => e.id !== eventId))
+      await saveBaseEvents(baseEvents.filter((e) => e.id !== eventId))
     }
   }
 
-  const addScenario = () => {
-    setScenarios((prev) => [
-      ...prev,
-      { id: uuid(), name: `Scenario ${prev.length + 1}`, events: [] },
-    ])
+  const addScenario = async () => {
+    await addScenarioToDb(`Scenario ${scenarios.length + 1}`)
   }
 
   const COLORS = ["#3b82f6", "#ef4444", "#22c55e", "#f59e0b", "#8b5cf6"]
@@ -604,13 +611,7 @@ export function ForecastPage() {
                 />
                 <Input
                   value={scenario.name}
-                  onChange={(e) =>
-                    setScenarios((prev) =>
-                      prev.map((s) =>
-                        s.id === scenario.id ? { ...s, name: e.target.value } : s
-                      )
-                    )
-                  }
+                  onChange={(e) => updateScenario(scenario.id, { name: e.target.value })}
                   className="h-7 w-48 border-none p-0 text-base font-semibold shadow-none focus-visible:ring-0"
                 />
                 <Badge
@@ -624,7 +625,7 @@ export function ForecastPage() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => setScenarios((prev) => prev.filter((s) => s.id !== scenario.id))}
+                onClick={() => deleteScenario(scenario.id)}
               >
                 <Trash2 className="h-4 w-4 text-destructive" />
               </Button>
