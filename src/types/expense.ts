@@ -15,6 +15,15 @@ export interface ExpenseCategory {
   scenarioId?: string
 }
 
+export interface CategoryRule {
+  id: string
+  pattern: string // normalized description (lowercased, trimmed)
+  categoryId: string
+  categoryKey: string // e.g. "groceries", "restaurants"
+  exampleDescription: string // original description for display
+  createdAt: Timestamp
+}
+
 export interface Expense {
   id: string
   categoryId: string

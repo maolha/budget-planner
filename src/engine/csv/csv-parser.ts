@@ -9,59 +9,85 @@ export function parseCSV(
   file: File
 ): Promise<{ headers: string[]; rows: Record<string, string>[] }> {
   return new Promise((resolve, reject) => {
-    // Read file as text first to handle Swiss bank preambles (UBS, ZKB, etc.)
+    // Read file as text — try UTF-8 first, fall back to Windows-1252 (Latin) for Swiss bank exports
     const reader = new FileReader()
     reader.onload = () => {
       let text = reader.result as string
       // Remove BOM
       text = text.replace(/^\uFEFF/, "")
 
-      // Detect and skip preamble lines (UBS format has metadata before the header row)
-      // Look for the actual CSV header by finding the line with the most delimiters
-      const lines = text.split(/\r?\n/)
-      let headerLineIndex = 0
-      const delim = text.includes(";") ? ";" : ","
-      let maxCols = 0
-      for (let i = 0; i < Math.min(lines.length, 15); i++) {
-        const cols = lines[i].split(delim).length
-        if (cols > maxCols) {
-          maxCols = cols
-          headerLineIndex = i
+      // Detect encoding issues: if UTF-8 produced replacement chars, retry as Windows-1252
+      // Swiss banks often export as ISO-8859-1/Windows-1252 (ä=0xE4, ö=0xF6, ü=0xFC)
+      if (text.includes("\uFFFD") || text.includes("Ã¤") || text.includes("Ã¶") || text.includes("Ã¼")) {
+        const latin1Reader = new FileReader()
+        latin1Reader.onload = () => {
+          const latin1Text = (latin1Reader.result as string).replace(/^\uFEFF/, "")
+          parseCsvText(latin1Text, resolve, reject)
         }
+        latin1Reader.onerror = () => reject(latin1Reader.error)
+        latin1Reader.readAsText(file, "windows-1252")
+        return
       }
 
-      // Rejoin from the header line onward
-      const csvContent = lines.slice(headerLineIndex).join("\n")
-
-      Papa.parse(csvContent, {
-        header: true,
-        skipEmptyLines: true,
-        delimiter: "",
-        complete: (results) => {
-          let headers = results.meta.fields ?? []
-          let rows = results.data as Record<string, string>[]
-
-          // UBS format: merge Belastung (debit) and Gutschrift (credit) into a single Amount column
-          const debitCol = headers.find((h) => h.toLowerCase().includes("belastung"))
-          const creditCol = headers.find((h) => h.toLowerCase().includes("gutschrift"))
-          if (debitCol && creditCol && !headers.some((h) => h.toLowerCase() === "amount")) {
-            headers = [...headers, "Amount"]
-            rows = rows.map((row) => {
-              const debit = row[debitCol] ?? ""
-              const credit = row[creditCol] ?? ""
-              // Belastung is negative (expense), Gutschrift is positive (income)
-              const amount = debit || (credit ? credit : "0")
-              return { ...row, Amount: amount }
-            })
-          }
-
-          resolve({ headers, rows })
-        },
-        error: (error: Error) => reject(error),
-      })
+      parseCsvText(text, resolve, reject)
     }
     reader.onerror = () => reject(reader.error)
     reader.readAsText(file, "UTF-8")
+  })
+}
+
+function parseCsvText(
+  text: string,
+  resolve: (value: { headers: string[]; rows: Record<string, string>[] }) => void,
+  reject: (reason?: unknown) => void
+) {
+  // Detect and skip preamble lines (UBS format has metadata before the header row)
+  // Look for the actual CSV header by finding the line with the most delimiters
+  const lines = text.split(/\r?\n/)
+  let headerLineIndex = 0
+  const delim = text.includes(";") ? ";" : ","
+  let maxCols = 0
+  for (let i = 0; i < Math.min(lines.length, 15); i++) {
+    const cols = lines[i].split(delim).length
+    if (cols > maxCols) {
+      maxCols = cols
+      headerLineIndex = i
+    }
+  }
+
+  // Rejoin from the header line onward
+  const csvContent = lines.slice(headerLineIndex).join("\n")
+
+  Papa.parse(csvContent, {
+    header: true,
+    skipEmptyLines: true,
+    delimiter: "",
+    complete: (results) => {
+      let headers = results.meta.fields ?? []
+      let rows = results.data as Record<string, string>[]
+
+      // UBS format: merge Belastung (debit) and Gutschrift (credit) into a single Amount column
+      const debitCol = headers.find((h) => h.toLowerCase().includes("belastung"))
+      const creditCol = headers.find((h) => h.toLowerCase().includes("gutschrift"))
+      if (debitCol && creditCol && !headers.some((h) => h.toLowerCase() === "amount")) {
+        headers = [...headers, "Amount"]
+        rows = rows.map((row) => {
+          const debit = (row[debitCol] ?? "").trim()
+          const credit = (row[creditCol] ?? "").trim()
+          // Belastung (debit) = money out → negative, Gutschrift (credit) = money in → positive
+          if (debit) {
+            return { ...row, Amount: `-${debit.replace(/^-/, "")}` }
+          }
+          if (credit) {
+            return { ...row, Amount: credit.replace(/^-/, "") }
+          }
+          return { ...row, Amount: "0" }
+        })
+      }
+
+      resolve({ headers, rows })
+    },
+    error: (error: Error) => reject(error),
   })
 }
 
@@ -132,5 +158,5 @@ export function mapToTransactions(
         categoryConfidence: csvCategory ? 0.9 : 0,
       }
     })
-    .filter((t) => t.date && t.amount !== 0)
+    .filter((t) => t.date && t.description)
 }

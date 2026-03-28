@@ -189,7 +189,7 @@ export function IncomePage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Family Member</Label>
-                <Select value={memberId} onValueChange={setMemberId}>
+                <Select value={memberId || undefined} onValueChange={setMemberId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select member" />
                   </SelectTrigger>

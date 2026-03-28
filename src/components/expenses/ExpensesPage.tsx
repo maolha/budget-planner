@@ -232,7 +232,7 @@ export function ExpensesPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Category</Label>
-                <Select value={expCategoryId} onValueChange={setExpCategoryId}>
+                <Select value={expCategoryId || undefined} onValueChange={setExpCategoryId}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
