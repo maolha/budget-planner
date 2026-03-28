@@ -18,7 +18,8 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Trash2, ArrowDownUp, Target } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { Plus, Trash2, ArrowDownUp, Target, TrendingUp, TrendingDown } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -26,6 +27,7 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Legend,
   ResponsiveContainer,
   PieChart,
   Pie,
@@ -36,7 +38,7 @@ import { useIncome } from "@/hooks/useIncome"
 import { useFamily } from "@/hooks/useFamily"
 import { calculateTaxSimple } from "@/engine/tax/tax-engine"
 import { useUIStore } from "@/store"
-import { formatCHF } from "@/lib/formatters"
+import { formatCHF, formatAxisCHF } from "@/lib/formatters"
 import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/constants"
 
 const GROUPS = [
@@ -112,6 +114,61 @@ export function ExpensesPage() {
       color: cat.color,
     }))
     .filter((d) => d.value > 0)
+
+  // Budget vs Actual calibration data (last 6 months)
+  const budgetVsActual = useMemo(() => {
+    const today = new Date()
+    // Build list of last 6 complete months (excluding current month)
+    const months: string[] = []
+    for (let i = 1; i <= 6; i++) {
+      const d = new Date(today.getFullYear(), today.getMonth() - i, 1)
+      months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`)
+    }
+    const monthCount = months.length
+
+    // Aggregate actual spend per category across those months
+    const actualTotals: Record<string, number> = {}
+    for (const exp of expenses) {
+      const ym = exp.date.substring(0, 7)
+      if (months.includes(ym)) {
+        actualTotals[exp.categoryId] = (actualTotals[exp.categoryId] ?? 0) + exp.amount
+      }
+    }
+
+    // Build per-category rows, excluding tax
+    const rows = categories
+      .filter((c) => !isTaxCategory(c))
+      .map((cat) => {
+        const budget = cat.monthlyBudget ?? 0
+        const totalActual = actualTotals[cat.id] ?? 0
+        const avgActual = monthCount > 0 ? Math.round(totalActual / monthCount) : 0
+        const diff = avgActual - budget
+        const pct = budget > 0 ? Math.round((diff / budget) * 100) : 0
+        const status: "under" | "over" | "nodata" =
+          totalActual === 0 ? "nodata" : diff > 0 ? "over" : "under"
+        return {
+          id: cat.id,
+          name: cat.name,
+          color: cat.color,
+          budget,
+          avgActual,
+          diff,
+          pct,
+          status,
+        }
+      })
+
+    const totalBudgetCalib = rows.reduce((s, r) => s + r.budget, 0)
+    const totalActualCalib = rows.reduce((s, r) => s + r.avgActual, 0)
+    const variance = totalActualCalib - totalBudgetCalib
+    const variancePct = totalBudgetCalib > 0 ? Math.round((variance / totalBudgetCalib) * 100) : 0
+
+    const withData = rows.filter((r) => r.status !== "nodata")
+    const mostOver = [...withData].sort((a, b) => b.diff - a.diff).slice(0, 3).filter((r) => r.diff > 0)
+    const mostUnder = [...withData].sort((a, b) => a.diff - b.diff).slice(0, 3).filter((r) => r.diff < 0)
+
+    return { rows, totalBudget: totalBudgetCalib, totalActual: totalActualCalib, variance, variancePct, mostOver, mostUnder, monthCount }
+  }, [expenses, categories])
 
   const handleAddExpense = async () => {
     if (!expCategoryId || !expAmount) return
@@ -272,6 +329,7 @@ export function ExpensesPage() {
           <TabsTrigger value="budget">Monthly Budget</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="calibration">Budget vs Actual</TabsTrigger>
         </TabsList>
 
         {/* Budget tab — clean table-like layout */}
@@ -475,6 +533,197 @@ export function ExpensesPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        {/* Budget vs Actual calibration tab */}
+        <TabsContent value="calibration" className="space-y-4">
+          {budgetVsActual.rows.every((r) => r.status === "nodata") ? (
+            <Card>
+              <CardContent className="py-12 text-center">
+                <p className="text-muted-foreground">
+                  No transaction data found for the last 6 months. Add expenses manually or import bank statements to see how your spending compares to your budget.
+                </p>
+              </CardContent>
+            </Card>
+          ) : (
+            <>
+              {/* Summary cards */}
+              <div className="grid gap-4 sm:grid-cols-4">
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Total Budget / {period}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatCHF(budgetVsActual.totalBudget * mult)}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Avg Actual / {period}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="text-2xl font-bold">{formatCHF(budgetVsActual.totalActual * mult)}</div>
+                    <p className="text-xs text-muted-foreground">last {budgetVsActual.monthCount} months avg</p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Variance / {period}</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className={`text-2xl font-bold ${budgetVsActual.variance > 0 ? "text-red-600" : "text-green-600"}`}>
+                      {budgetVsActual.variance > 0 ? "+" : ""}{formatCHF(budgetVsActual.variance * mult)}
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {budgetVsActual.variancePct > 0 ? "+" : ""}{budgetVsActual.variancePct}% vs budget
+                    </p>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader className="pb-2">
+                    <CardTitle className="text-sm font-medium text-muted-foreground">Biggest Gaps</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-1">
+                    {budgetVsActual.mostOver.length > 0 ? (
+                      budgetVsActual.mostOver.map((r) => (
+                        <div key={r.id} className="flex items-center gap-1.5 text-xs">
+                          <TrendingUp className="h-3 w-3 text-red-500 shrink-0" />
+                          <span className="truncate">{r.name}</span>
+                          <span className="ml-auto text-red-600 shrink-0">+{formatCHF(r.diff * mult)}</span>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-xs text-muted-foreground">All within budget</p>
+                    )}
+                    {budgetVsActual.mostUnder.slice(0, 2).map((r) => (
+                      <div key={r.id} className="flex items-center gap-1.5 text-xs">
+                        <TrendingDown className="h-3 w-3 text-green-500 shrink-0" />
+                        <span className="truncate">{r.name}</span>
+                        <span className="ml-auto text-green-600 shrink-0">{formatCHF(r.diff * mult)}</span>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Horizontal bar chart: Budget vs Actual per category */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Budget vs Actual by Category</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div style={{ height: Math.max(300, budgetVsActual.rows.filter((r) => r.budget > 0 || r.avgActual > 0).length * 40) }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart
+                        data={budgetVsActual.rows
+                          .filter((r) => r.budget > 0 || r.avgActual > 0)
+                          .map((r) => ({
+                            name: r.name.length > 20 ? r.name.substring(0, 19) + "..." : r.name,
+                            Budget: r.budget * mult,
+                            Actual: r.avgActual * mult,
+                          }))}
+                        layout="vertical"
+                        margin={{ left: 10, right: 20 }}
+                      >
+                        <CartesianGrid strokeDasharray="3 3" />
+                        <XAxis type="number" tickFormatter={formatAxisCHF} />
+                        <YAxis dataKey="name" type="category" width={130} tick={{ fontSize: 12 }} />
+                        <Tooltip formatter={(v) => formatCHF(Number(v))} />
+                        <Legend />
+                        <Bar dataKey="Budget" fill="#3b82f6" radius={[0, 4, 4, 0]} />
+                        <Bar dataKey="Actual" fill="#f59e0b" radius={[0, 4, 4, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Detailed table */}
+              <Card>
+                <CardHeader>
+                  <CardTitle>Category Breakdown</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b text-left">
+                          <th className="pb-2 font-medium">Category</th>
+                          <th className="pb-2 font-medium text-right">Budget / {period}</th>
+                          <th className="pb-2 font-medium text-right">Avg Actual / {period}</th>
+                          <th className="pb-2 font-medium text-right">Difference</th>
+                          <th className="pb-2 font-medium text-right">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {budgetVsActual.rows.map((row) => (
+                          <tr key={row.id} className="border-b last:border-0">
+                            <td className="py-2">
+                              <div className="flex items-center gap-2">
+                                <div className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: row.color }} />
+                                <span className="truncate">{row.name}</span>
+                              </div>
+                            </td>
+                            <td className="py-2 text-right">{formatCHF(row.budget * mult)}</td>
+                            <td className="py-2 text-right">
+                              {row.status === "nodata" ? (
+                                <span className="text-muted-foreground">--</span>
+                              ) : (
+                                formatCHF(row.avgActual * mult)
+                              )}
+                            </td>
+                            <td className="py-2 text-right">
+                              {row.status === "nodata" ? (
+                                <span className="text-muted-foreground">--</span>
+                              ) : (
+                                <span className={row.diff > 0 ? "text-red-600" : "text-green-600"}>
+                                  {row.diff > 0 ? "+" : ""}{formatCHF(row.diff * mult)}
+                                  <span className="text-xs text-muted-foreground ml-1">
+                                    ({row.pct > 0 ? "+" : ""}{row.pct}%)
+                                  </span>
+                                </span>
+                              )}
+                            </td>
+                            <td className="py-2 text-right">
+                              {row.status === "nodata" ? (
+                                <Badge variant="secondary" className="text-xs">No data</Badge>
+                              ) : row.status === "over" ? (
+                                <Badge variant="destructive" className="text-xs">Over</Badge>
+                              ) : (
+                                <Badge className="bg-green-600 text-white text-xs hover:bg-green-700">Under</Badge>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t font-medium">
+                          <td className="pt-3">Total</td>
+                          <td className="pt-3 text-right">{formatCHF(budgetVsActual.totalBudget * mult)}</td>
+                          <td className="pt-3 text-right">{formatCHF(budgetVsActual.totalActual * mult)}</td>
+                          <td className="pt-3 text-right">
+                            <span className={budgetVsActual.variance > 0 ? "text-red-600" : "text-green-600"}>
+                              {budgetVsActual.variance > 0 ? "+" : ""}{formatCHF(budgetVsActual.variance * mult)}
+                              <span className="text-xs text-muted-foreground ml-1">
+                                ({budgetVsActual.variancePct > 0 ? "+" : ""}{budgetVsActual.variancePct}%)
+                              </span>
+                            </span>
+                          </td>
+                          <td className="pt-3 text-right">
+                            {budgetVsActual.variance > 0 ? (
+                              <Badge variant="destructive" className="text-xs">Over</Badge>
+                            ) : (
+                              <Badge className="bg-green-600 text-white text-xs hover:bg-green-700">Under</Badge>
+                            )}
+                          </td>
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </>
+          )}
         </TabsContent>
       </Tabs>
     </div>
