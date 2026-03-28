@@ -632,7 +632,7 @@ export function ForecastPage() {
                     </div>
                     <div className="flex items-center gap-1">
                       {scenarios.length > 0 && (
-                        <Select value="" onValueChange={(v) => moveEvent(event.id, null, v)}>
+                        <Select onValueChange={(v) => moveEvent(event.id, null, v)}>
                           <SelectTrigger className="h-7 w-24 text-xs">
                             <SelectValue placeholder="Move to" />
                           </SelectTrigger>
@@ -703,7 +703,7 @@ export function ForecastPage() {
                         <span className="text-sm">{event.label}</span>
                       </div>
                       <div className="flex items-center gap-1">
-                        <Select value="" onValueChange={(v) => moveEvent(event.id, scenario.id, v === "base" ? null : v)}>
+                        <Select onValueChange={(v) => moveEvent(event.id, scenario.id, v === "base" ? null : v)}>
                           <SelectTrigger className="h-6 w-24 text-xs">
                             <SelectValue placeholder="Move to" />
                           </SelectTrigger>

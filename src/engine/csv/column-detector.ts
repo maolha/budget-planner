@@ -4,17 +4,18 @@ import type { ColumnMapping } from "./types"
 const DATE_PATTERNS = [
   "date", "datum", "buchungsdatum", "valuta", "valutadatum",
   "booking date", "transaction date", "value date",
+  "abschlussdatum",
 ]
 
 const AMOUNT_PATTERNS = [
-  "amount", "betrag", "belastung", "gutschrift", "saldo",
+  "amount", "betrag", "einzelbetrag",
   "debit", "credit", "chf", "transaction amount",
 ]
 
 const DESCRIPTION_PATTERNS = [
   "description", "beschreibung", "buchungstext", "text",
   "zahlungsgrund", "mitteilung", "details", "narrative",
-  "transaction", "bezeichnung",
+  "transaction", "bezeichnung", "beschreibung1",
 ]
 
 const BALANCE_PATTERNS = [

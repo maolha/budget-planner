@@ -9,19 +9,59 @@ export function parseCSV(
   file: File
 ): Promise<{ headers: string[]; rows: Record<string, string>[] }> {
   return new Promise((resolve, reject) => {
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      encoding: "UTF-8",
-      // Try semicolon first (common in Swiss bank exports), fall back to comma
-      delimiter: "",
-      complete: (results) => {
-        const headers = results.meta.fields ?? []
-        const rows = results.data as Record<string, string>[]
-        resolve({ headers, rows })
-      },
-      error: (error: Error) => reject(error),
-    })
+    // Read file as text first to handle Swiss bank preambles (UBS, ZKB, etc.)
+    const reader = new FileReader()
+    reader.onload = () => {
+      let text = reader.result as string
+      // Remove BOM
+      text = text.replace(/^\uFEFF/, "")
+
+      // Detect and skip preamble lines (UBS format has metadata before the header row)
+      // Look for the actual CSV header by finding the line with the most delimiters
+      const lines = text.split(/\r?\n/)
+      let headerLineIndex = 0
+      const delim = text.includes(";") ? ";" : ","
+      let maxCols = 0
+      for (let i = 0; i < Math.min(lines.length, 15); i++) {
+        const cols = lines[i].split(delim).length
+        if (cols > maxCols) {
+          maxCols = cols
+          headerLineIndex = i
+        }
+      }
+
+      // Rejoin from the header line onward
+      const csvContent = lines.slice(headerLineIndex).join("\n")
+
+      Papa.parse(csvContent, {
+        header: true,
+        skipEmptyLines: true,
+        delimiter: "",
+        complete: (results) => {
+          let headers = results.meta.fields ?? []
+          let rows = results.data as Record<string, string>[]
+
+          // UBS format: merge Belastung (debit) and Gutschrift (credit) into a single Amount column
+          const debitCol = headers.find((h) => h.toLowerCase().includes("belastung"))
+          const creditCol = headers.find((h) => h.toLowerCase().includes("gutschrift"))
+          if (debitCol && creditCol && !headers.some((h) => h.toLowerCase() === "amount")) {
+            headers = [...headers, "Amount"]
+            rows = rows.map((row) => {
+              const debit = row[debitCol] ?? ""
+              const credit = row[creditCol] ?? ""
+              // Belastung is negative (expense), Gutschrift is positive (income)
+              const amount = debit || (credit ? credit : "0")
+              return { ...row, Amount: amount }
+            })
+          }
+
+          resolve({ headers, rows })
+        },
+        error: (error: Error) => reject(error),
+      })
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsText(file, "UTF-8")
   })
 }
 
