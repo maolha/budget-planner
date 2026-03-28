@@ -111,6 +111,10 @@ export function categorizeTransactions(
   transactions: ParsedTransaction[]
 ): ParsedTransaction[] {
   return transactions.map((t) => {
+    // Keep CSV-provided category if it was already set with high confidence
+    if (t.suggestedCategory && t.categoryConfidence >= 0.8) {
+      return t
+    }
     const { category, confidence } = categorizeTransaction(t.description)
     return {
       ...t,

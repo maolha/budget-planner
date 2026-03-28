@@ -22,6 +22,10 @@ const BALANCE_PATTERNS = [
   "balance", "saldo", "kontostand", "running balance",
 ]
 
+const CATEGORY_PATTERNS = [
+  "category", "kategorie", "type", "typ", "gruppe", "group",
+]
+
 function matchHeader(header: string, patterns: string[]): boolean {
   const lower = header.toLowerCase().trim()
   return patterns.some((p) => lower.includes(p))
@@ -49,6 +53,9 @@ export function detectColumns(
       matched++
     } else if (!mapping.balance && matchHeader(header, BALANCE_PATTERNS)) {
       mapping.balance = header
+      matched++
+    } else if (!mapping.category && matchHeader(header, CATEGORY_PATTERNS)) {
+      mapping.category = header
       matched++
     }
   }

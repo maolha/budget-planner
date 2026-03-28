@@ -13,6 +13,7 @@ export interface ColumnMapping {
   amount: string
   description: string
   balance?: string
+  category?: string
 }
 
 export interface DuplicateCandidate {

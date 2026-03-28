@@ -41,6 +41,7 @@ export function StatementUploadPage() {
     amount: "",
     description: "",
   })
+  const [currency, setCurrency] = useState("CHF")
   const [transactions, setTransactions] = useState<ParsedTransaction[]>([])
   const [categoryOverrides, setCategoryOverrides] = useState<Record<number, string>>({})
   const [importing, setImporting] = useState(false)
@@ -63,6 +64,7 @@ export function StatementUploadPage() {
         amount: detected.amount ?? "",
         description: detected.description ?? "",
         balance: detected.balance,
+        category: detected.category,
       })
 
       setStep("map")
@@ -175,6 +177,22 @@ export function StatementUploadPage() {
                 statements.
               </p>
             </div>
+            <div className="space-y-2">
+              <Label>Currency</Label>
+              <Select value={currency} onValueChange={setCurrency}>
+                <SelectTrigger className="w-60">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CHF">CHF</SelectItem>
+                  <SelectItem value="EUR">EUR</SelectItem>
+                  <SelectItem value="USD">USD</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Applied to all transactions in this file.
+              </p>
+            </div>
 
             <div
               className="flex flex-col items-center justify-center gap-4 rounded-lg border-2 border-dashed p-12 transition-colors hover:border-primary/50"
@@ -210,7 +228,7 @@ export function StatementUploadPage() {
             <p className="text-sm text-muted-foreground">
               We detected {rawRows.length} rows. Map CSV columns to transaction fields:
             </p>
-            <div className="grid gap-4 sm:grid-cols-3">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <div className="space-y-2">
                 <Label>Date Column *</Label>
                 <Select value={mapping.date} onValueChange={(v) => setMapping({ ...mapping, date: v })}>
@@ -247,6 +265,23 @@ export function StatementUploadPage() {
                     <SelectValue placeholder="Select column" />
                   </SelectTrigger>
                   <SelectContent>
+                    {headers.map((h) => (
+                      <SelectItem key={h} value={h}>{h}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>Category Column (optional)</Label>
+                <Select
+                  value={mapping.category ?? "none"}
+                  onValueChange={(v) => setMapping({ ...mapping, category: v === "none" ? undefined : v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="None" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— None —</SelectItem>
                     {headers.map((h) => (
                       <SelectItem key={h} value={h}>{h}</SelectItem>
                     ))}

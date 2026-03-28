@@ -120,13 +120,17 @@ export function mapToTransactions(
   mapping: ColumnMapping
 ): ParsedTransaction[] {
   return rows
-    .map((row) => ({
-      date: parseSwissDate(row[mapping.date] ?? ""),
-      amount: parseSwissAmount(row[mapping.amount] ?? ""),
-      description: (row[mapping.description] ?? "").trim(),
-      balance: mapping.balance ? parseSwissAmount(row[mapping.balance] ?? "") : undefined,
-      rawRow: row,
-      categoryConfidence: 0,
-    }))
+    .map((row) => {
+      const csvCategory = mapping.category ? (row[mapping.category] ?? "").trim() : ""
+      return {
+        date: parseSwissDate(row[mapping.date] ?? ""),
+        amount: parseSwissAmount(row[mapping.amount] ?? ""),
+        description: (row[mapping.description] ?? "").trim(),
+        balance: mapping.balance ? parseSwissAmount(row[mapping.balance] ?? "") : undefined,
+        rawRow: row,
+        suggestedCategory: csvCategory ? csvCategory.toLowerCase().replace(/[^a-z0-9]+/g, "_") : undefined,
+        categoryConfidence: csvCategory ? 0.9 : 0,
+      }
+    })
     .filter((t) => t.date && t.amount !== 0)
 }
