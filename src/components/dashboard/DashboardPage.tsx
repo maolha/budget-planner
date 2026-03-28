@@ -1,6 +1,7 @@
 import { useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Wallet, ArrowDownUp, PiggyBank, TrendingUp, Landmark, AlertCircle, Loader2, Banknote } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { ArrowDownUp, PiggyBank, TrendingUp, Landmark, AlertCircle, Loader2, Banknote } from "lucide-react"
 import {
   Bar,
   XAxis,
@@ -23,9 +24,11 @@ import { useAssets } from "@/hooks/useAssets"
 import { useFamily } from "@/hooks/useFamily"
 import { calculateTaxSimple } from "@/engine/tax/tax-engine"
 import { calculateNetWorth } from "@/engine/net-worth/net-worth-calculator"
+import { useUIStore } from "@/store"
 import { formatCHF, formatPercent, formatAxisCHF } from "@/lib/formatters"
 
 export function DashboardPage() {
+  const { includeBonus, toggleIncludeBonus } = useUIStore()
   const { totalAnnualGross, totalAnnualBase, totalAnnualBonus, incomes, incomeTimeline, loading: incomeLoading, error: incomeError } = useIncome()
   const { expenses, categories, totalMonthlyExpenses, totalMonthlyBudget, loading: expenseLoading, error: expenseError } = useExpenses()
   const { assets, loading: assetLoading, error: assetError } = useAssets()
@@ -47,12 +50,15 @@ export function DashboardPage() {
     [totalAnnualGross, filingStatus, numChildren, family?.municipality, family?.churchTax]
   )
 
-  const monthlyNetIncome = Math.round((totalAnnualGross - taxResult.total) / 12)
+  const monthlyNetIncomeFull = Math.round((totalAnnualGross - taxResult.total) / 12)
   const netWorth = useMemo(() => calculateNetWorth(assets), [assets])
   const cashBalance = netWorth.breakdown.liquid
   const taxRatio = totalAnnualGross > 0 ? taxResult.total / totalAnnualGross : 0
   const monthlyNetBase = Math.round((totalAnnualBase * (1 - taxRatio)) / 12)
   const monthlyNetBonus = Math.round((totalAnnualBonus * (1 - taxRatio)) / 12)
+
+  // Toggle: include bonus or base-only (conservative)
+  const monthlyNetIncome = includeBonus ? monthlyNetIncomeFull : monthlyNetBase
 
   // Use budget when no actual transactions recorded; otherwise use actual spend
   const effectiveMonthlyExpenses = totalMonthlyBudget > 0 ? totalMonthlyBudget : totalMonthlyExpenses
@@ -181,12 +187,21 @@ export function DashboardPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground">
               Monthly Income
             </CardTitle>
-            <Wallet className="h-4 w-4 text-green-600" />
+            <Button
+              variant={includeBonus ? "default" : "outline"}
+              size="sm"
+              className="h-6 text-xs px-2"
+              onClick={toggleIncludeBonus}
+            >
+              {includeBonus ? "With Bonus" : "Base Only"}
+            </Button>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCHF(monthlyNetIncome)}</div>
             <p className="text-xs text-muted-foreground">
-              {formatCHF(monthlyNetBase)} salary + {formatCHF(monthlyNetBonus)} bonus
+              {includeBonus
+                ? `${formatCHF(monthlyNetBase)} salary + ${formatCHF(monthlyNetBonus)} bonus`
+                : "salary only — conservative"}
             </p>
           </CardContent>
         </Card>

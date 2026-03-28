@@ -18,7 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
-import { Plus, Trash2, ArrowDownUp, Target, TrendingUp } from "lucide-react"
+import { Plus, Trash2, ArrowDownUp, Target } from "lucide-react"
 import {
   BarChart,
   Bar,
@@ -35,6 +35,7 @@ import { useExpenses } from "@/hooks/useExpenses"
 import { useIncome } from "@/hooks/useIncome"
 import { useFamily } from "@/hooks/useFamily"
 import { calculateTaxSimple } from "@/engine/tax/tax-engine"
+import { useUIStore } from "@/store"
 import { formatCHF } from "@/lib/formatters"
 import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/constants"
 
@@ -48,7 +49,8 @@ const GROUPS = [
 export function ExpensesPage() {
   const { expenses, categories, loading, addExpense, deleteExpense, updateCategoryBudget } =
     useExpenses()
-  const { totalAnnualGross } = useIncome()
+  const { totalAnnualGross, totalAnnualBase } = useIncome()
+  const { includeBonus, toggleIncludeBonus } = useUIStore()
   const { family } = useFamily()
 
   const [dialogOpen, setDialogOpen] = useState(false)
@@ -61,16 +63,15 @@ export function ExpensesPage() {
   const numAdults = family?.adults?.length ?? 2
   const filingStatus = numAdults >= 2 ? "married" as const : "single" as const
 
-  const taxResult = useMemo(
-    () =>
-      calculateTaxSimple(totalAnnualGross, filingStatus, numChildren, {
-        municipality: family?.municipality ?? "Zürich",
-        churchTax: family?.churchTax ?? false,
-      }),
-    [totalAnnualGross, filingStatus, numChildren, family?.municipality, family?.churchTax]
+  const grossForCalc = includeBonus ? totalAnnualGross : totalAnnualBase
+  const taxForCalc = useMemo(
+    () => calculateTaxSimple(grossForCalc, filingStatus, numChildren, {
+      municipality: family?.municipality ?? "Zürich",
+      churchTax: family?.churchTax ?? false,
+    }),
+    [grossForCalc, filingStatus, numChildren, family?.municipality, family?.churchTax]
   )
-
-  const monthlyNetIncome = Math.round((totalAnnualGross - taxResult.total) / 12)
+  const monthlyNetIncome = Math.round((grossForCalc - taxForCalc.total) / 12)
 
   // Current month totals
   const now = new Date()
@@ -191,10 +192,20 @@ export function ExpensesPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Monthly Net Income</CardTitle>
-            <TrendingUp className="h-4 w-4 text-green-600" />
+            <Button
+              variant={includeBonus ? "default" : "outline"}
+              size="sm"
+              className="h-6 text-xs px-2"
+              onClick={toggleIncludeBonus}
+            >
+              {includeBonus ? "With Bonus" : "Base Only"}
+            </Button>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCHF(monthlyNetIncome)}</div>
+            <p className="text-xs text-muted-foreground">
+              {includeBonus ? "incl. bonus (avg)" : "salary only — conservative"}
+            </p>
           </CardContent>
         </Card>
         <Card>
