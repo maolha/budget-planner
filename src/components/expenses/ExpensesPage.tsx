@@ -294,6 +294,7 @@ export function ExpensesPage() {
                     <div className="space-y-1">
                       {groupCats.map((cat) => {
                         const defaultDef = DEFAULT_EXPENSE_CATEGORIES.find((d) => d.name === cat.name)
+                        const isTaxCat = cat.name.toLowerCase().includes("tax")
                         return (
                           <div
                             key={cat.id}
@@ -303,7 +304,12 @@ export function ExpensesPage() {
                               className="h-2 w-2 rounded-full shrink-0"
                               style={{ backgroundColor: cat.color }}
                             />
-                            <span className="text-sm flex-1 min-w-0 truncate">{cat.name}</span>
+                            <span className="text-sm flex-1 min-w-0 truncate">
+                              {cat.name}
+                              {isTaxCat && (
+                                <span className="text-xs text-muted-foreground ml-1">(from Tax page)</span>
+                              )}
+                            </span>
                             <div className="flex items-center gap-1 shrink-0">
                               <span className="text-xs text-muted-foreground">CHF</span>
                               <Input
@@ -311,7 +317,9 @@ export function ExpensesPage() {
                                 value={cat.monthlyBudget ?? ""}
                                 onChange={(e) => updateCategoryBudget(cat.id, Number(e.target.value))}
                                 placeholder={defaultDef?.typicalMonthly?.toString() ?? "—"}
-                                className="h-7 w-24 text-sm text-right"
+                                className={`h-7 w-24 text-sm text-right ${isTaxCat ? "bg-muted/50" : ""}`}
+                                readOnly={isTaxCat}
+                                title={isTaxCat ? "Auto-calculated from Tax page" : undefined}
                               />
                             </div>
                           </div>
