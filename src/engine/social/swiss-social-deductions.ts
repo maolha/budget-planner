@@ -20,21 +20,26 @@ export const ALV_CEILING = 148200
 export const ALV_SOLIDARITY_RATE = 0.005
 
 // BVG — Occupational pension (2nd pillar)
-// TOTAL contribution rates (employer + employee combined) by age bracket:
-//   25-34: 7%   35-44: 10%   45-54: 15%   55-65: 18%
+// TOTAL contribution rates (employer + employee combined) by age bracket.
+// Legal minimum (LPP):  25-34: 7%   35-44: 10%   45-54: 15%   55-65: 18%
+// Most employers offer above-minimum plans with higher rates and salary caps.
+// We use slightly above-minimum defaults that better reflect typical plans.
 // Default split is 50/50, but employer can pay more.
+//
 // Coordinated salary = gross − coordination deduction (CHF 25,725 for 2025)
+// Legal minimum cap is CHF 88,200 but most plans insure up to full salary.
 export const BVG_COORDINATION_DEDUCTION = 25725
 export const BVG_ENTRY_THRESHOLD = 22050
-export const BVG_MAX_INSURED_SALARY = 88200 // upper limit of insured salary
+export const BVG_MAX_INSURED_SALARY = 860000 // effectively uncapped — most plans cover full salary
 export const BVG_DEFAULT_EMPLOYEE_SPLIT = 50 // percent
 
+// Typical total rates (above legal minimum, reflecting common employer plans)
 export function bvgTotalRate(age: number): number {
   if (age < 25) return 0
-  if (age <= 34) return 0.07
-  if (age <= 44) return 0.10
-  if (age <= 54) return 0.15
-  return 0.18
+  if (age <= 34) return 0.09
+  if (age <= 44) return 0.13
+  if (age <= 54) return 0.18
+  return 0.22
 }
 
 // NBU — Non-occupational accident insurance (Nichtberufsunfall)

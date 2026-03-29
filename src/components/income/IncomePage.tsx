@@ -503,14 +503,22 @@ export function IncomePage() {
                   ].map((row) => (
                     <tr key={row.key} className="border-b border-dashed">
                       <td className="py-1 text-muted-foreground">{row.label}</td>
-                      {perIncomeBreakdowns.map(({ income, social }) => (
-                        <td key={income.id} className="py-1 text-right pl-4 text-red-600">
-                          -{formatCHF(Math.round(social[row.key] / 12))}
-                        </td>
-                      ))}
+                      {perIncomeBreakdowns.map(({ income, social }) => {
+                        const gross = Number(income.annualGross || 0)
+                        const pct = gross > 0 ? (social[row.key] / gross) * 100 : 0
+                        return (
+                          <td key={income.id} className="py-1 text-right pl-4 text-red-600">
+                            -{formatCHF(Math.round(social[row.key] / 12))}
+                            <span className="text-xs text-muted-foreground ml-1">({pct.toFixed(1)}%)</span>
+                          </td>
+                        )
+                      })}
                       {hasMultipleIncomes && (
                         <td className="py-1 text-right pl-4 text-red-600 border-l">
                           -{formatCHF(Math.round(socialDeductions[row.key] / 12))}
+                          <span className="text-xs text-muted-foreground ml-1">
+                            ({totalAnnualGross > 0 ? ((socialDeductions[row.key] / totalAnnualGross) * 100).toFixed(1) : "0"}%)
+                          </span>
                         </td>
                       )}
                     </tr>
@@ -519,14 +527,20 @@ export function IncomePage() {
                   {/* Social total */}
                   <tr className="border-b">
                     <td className="py-1.5 font-medium">Total Social</td>
-                    {perIncomeBreakdowns.map(({ income, social }) => (
-                      <td key={income.id} className="py-1.5 text-right pl-4 text-red-600 font-medium">
-                        -{formatCHF(Math.round(social.total / 12))}
-                      </td>
-                    ))}
+                    {perIncomeBreakdowns.map(({ income, social }) => {
+                      const gross = Number(income.annualGross || 0)
+                      const pct = gross > 0 ? (social.total / gross) * 100 : 0
+                      return (
+                        <td key={income.id} className="py-1.5 text-right pl-4 text-red-600 font-medium">
+                          -{formatCHF(Math.round(social.total / 12))}
+                          <span className="text-xs font-normal text-muted-foreground ml-1">({pct.toFixed(1)}%)</span>
+                        </td>
+                      )
+                    })}
                     {hasMultipleIncomes && (
                       <td className="py-1.5 text-right pl-4 text-red-600 font-medium border-l">
                         -{formatCHF(Math.round(socialDeductions.total / 12))}
+                        <span className="text-xs font-normal text-muted-foreground ml-1">({formatPercent(socialDeductions.rates.effective)})</span>
                       </td>
                     )}
                   </tr>
