@@ -50,7 +50,7 @@ const GROUPS = [
 ]
 
 export function ExpensesPage() {
-  const { expenses, categories, loading, addExpense, deleteExpense, updateCategoryBudget } =
+  const { expenses, categories, loading, addExpense, addCategory, deleteExpense, updateCategoryBudget } =
     useExpenses()
   const { totalAnnualGross, totalAnnualBase, currentIncomes } = useIncome()
   const { includeBonus, toggleIncludeBonus } = useUIStore()
@@ -61,10 +61,15 @@ export function ExpensesPage() {
   const period = viewMode === "yearly" ? "year" : "month"
 
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [expGroup, setExpGroup] = useState("")
+  const [expCategoryId, setExpCategoryId] = useState("")
   const [expAmount, setExpAmount] = useState(0)
   const [expDate, setExpDate] = useState(new Date().toISOString().split("T")[0])
   const [expDescription, setExpDescription] = useState("")
+
+  // Add category dialog
+  const [catDialogOpen, setCatDialogOpen] = useState(false)
+  const [newCatName, setNewCatName] = useState("")
+  const [newCatGroup, setNewCatGroup] = useState("")
 
   const numChildren = family?.children?.filter((c) => !c.isPlanned).length ?? 0
   const numAdults = family?.adults?.length ?? 2
@@ -189,23 +194,11 @@ export function ExpensesPage() {
     return { rows, totalBudget: totalBudgetCalib, totalActual: totalActualCalib, variance, variancePct, mostOver, mostUnder, monthCount }
   }, [expenses, categories])
 
-  // Resolve group selection to a category ID (first category in the group)
-  const groupToCategoryId = (groupLabel: string): string | null => {
-    const group = GROUPS.find((g) => g.label === groupLabel)
-    if (!group) return null
-    for (const key of group.keys) {
-      const cat = findCatByKey(key)
-      if (cat) return cat.id
-    }
-    return null
-  }
-
   const handleAddExpense = async () => {
-    const categoryId = groupToCategoryId(expGroup)
-    if (!categoryId || !expAmount) return
+    if (!expCategoryId || !expAmount) return
     try {
       await addExpense({
-        categoryId,
+        categoryId: expCategoryId,
         amount: expAmount,
         date: expDate,
         description: expDescription,
@@ -213,11 +206,32 @@ export function ExpensesPage() {
         source: "manual",
       })
       setDialogOpen(false)
-      setExpGroup("")
       setExpAmount(0)
       setExpDescription("")
     } catch (err) {
       console.error("Failed to add expense:", err)
+    }
+  }
+
+  const handleAddCategory = async () => {
+    if (!newCatName.trim() || !newCatGroup) return
+    const maxSort = categories.reduce((m, c) => Math.max(m, c.sortOrder ?? 0), 0)
+    try {
+      await addCategory({
+        name: newCatName.trim(),
+        icon: "Tag",
+        color: "#6b7280",
+        priority: 0,
+        isDefault: false,
+        sortOrder: maxSort + 1,
+        isFixed: false,
+        group: newCatGroup,
+      })
+      setCatDialogOpen(false)
+      setNewCatName("")
+      setNewCatGroup("")
+    } catch (err) {
+      console.error("Failed to add category:", err)
     }
   }
 
@@ -250,31 +264,71 @@ export function ExpensesPage() {
             </Button>
           </div>
         </div>
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Expense
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Add Expense</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Category</Label>
-                <Select value={expGroup || undefined} onValueChange={setExpGroup}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GROUPS.map((g) => (
-                      <SelectItem key={g.label} value={g.label}>{g.label}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        <div className="flex gap-2">
+          <Dialog open={catDialogOpen} onOpenChange={setCatDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Category
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Expense Category</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Category Name</Label>
+                  <Input
+                    value={newCatName}
+                    onChange={(e) => setNewCatName(e.target.value)}
+                    placeholder="e.g. Subscriptions"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Group</Label>
+                  <Select value={newCatGroup || undefined} onValueChange={setNewCatGroup}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select group" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GROUPS.map((g) => (
+                        <SelectItem key={g.label} value={g.label}>{g.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button onClick={handleAddCategory} className="w-full" disabled={!newCatName.trim() || !newCatGroup}>
+                  Add Category
+                </Button>
               </div>
+            </DialogContent>
+          </Dialog>
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add Expense
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Add Expense</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Category</Label>
+                  <Select value={expCategoryId || undefined} onValueChange={setExpCategoryId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Amount (CHF)</Label>
@@ -305,6 +359,7 @@ export function ExpensesPage() {
             </div>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {/* Summary */}
@@ -368,9 +423,13 @@ export function ExpensesPage() {
         <TabsContent value="budget" className="space-y-4">
           <div className="grid gap-4 lg:grid-cols-2">
             {GROUPS.map((group) => {
-              const groupCats = group.keys
+              const defaultCats = group.keys
                 .map((key) => findCatByKey(key))
                 .filter(Boolean) as typeof categories
+              const customCats = categories.filter(
+                (c) => c.group === group.label && !defaultCats.some((d) => d.id === c.id)
+              )
+              const groupCats = [...defaultCats, ...customCats]
 
               const groupBudget = groupCats
                 .filter((c) => !isTaxCategory(c))

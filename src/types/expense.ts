@@ -12,6 +12,7 @@ export interface ExpenseCategory {
   monthlyBudget?: number
   recommendedBudget?: number
   isFixed: boolean
+  group?: string // "Fixed Costs" | "Daily Living" | "Lifestyle" | "Savings & Investments"
   scenarioId?: string
 }
 

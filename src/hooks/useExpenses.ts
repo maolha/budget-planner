@@ -92,6 +92,16 @@ export function useExpenses() {
     [familyId]
   )
 
+  const addCategory = useCallback(
+    async (data: Omit<ExpenseCategory, "id">) => {
+      if (!familyId) throw new Error("No family")
+      const ref = doc(collection(db, "families", familyId, "expenseCategories"))
+      await setDoc(ref, data)
+      return ref.id
+    },
+    [familyId]
+  )
+
   const updateCategoryPriority = useCallback(
     async (categoryId: string, priority: number) => {
       if (!familyId) throw new Error("No family")
@@ -144,6 +154,7 @@ export function useExpenses() {
     loading,
     error,
     addExpense,
+    addCategory,
     deleteExpense,
     updateCategoryPriority,
     updateCategoryBudget,
