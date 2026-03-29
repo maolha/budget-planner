@@ -471,14 +471,48 @@ export function IncomePage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {/* Gross */}
-                  <tr className="border-b">
-                    <td className="py-1.5 font-medium">Gross Salary</td>
+                  {/* Gross base */}
+                  <tr>
+                    <td className="py-1.5 font-medium">Base Salary</td>
                     {perIncomeBreakdowns.map(({ income }) => (
-                      <td key={income.id} className="py-1.5 text-right pl-4 font-semibold">
+                      <td key={income.id} className="py-1.5 text-right pl-4">
                         {formatCHF(Math.round(Number(income.annualGross || 0) / 12))}
                       </td>
                     ))}
+                    {hasMultipleIncomes && (
+                      <td className="py-1.5 text-right pl-4 border-l">{formatCHF(Math.round(totalAnnualBase / 12))}</td>
+                    )}
+                  </tr>
+                  {/* Bonus */}
+                  {totalAnnualBonus > 0 && (
+                    <tr>
+                      <td className="py-1.5 text-muted-foreground">Bonus (avg/mo)</td>
+                      {perIncomeBreakdowns.map(({ income }) => {
+                        const bonus = Number(income.bonus || 0)
+                        return (
+                          <td key={income.id} className="py-1.5 text-right pl-4 text-muted-foreground">
+                            {bonus > 0 ? formatCHF(Math.round(bonus / 12)) : "—"}
+                          </td>
+                        )
+                      })}
+                      {hasMultipleIncomes && (
+                        <td className="py-1.5 text-right pl-4 text-muted-foreground border-l">
+                          {formatCHF(Math.round(totalAnnualBonus / 12))}
+                        </td>
+                      )}
+                    </tr>
+                  )}
+                  {/* Total gross */}
+                  <tr className="border-b">
+                    <td className="py-1.5 font-medium">Total Gross</td>
+                    {perIncomeBreakdowns.map(({ income }) => {
+                      const total = Number(income.annualGross || 0) + Number(income.bonus || 0)
+                      return (
+                        <td key={income.id} className="py-1.5 text-right pl-4 font-semibold">
+                          {formatCHF(Math.round(total / 12))}
+                        </td>
+                      )
+                    })}
                     {hasMultipleIncomes && (
                       <td className="py-1.5 text-right pl-4 font-semibold border-l">{formatCHF(totalMonthlyGross)}</td>
                     )}
