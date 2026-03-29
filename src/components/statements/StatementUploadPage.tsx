@@ -79,7 +79,7 @@ const INCOME_CATEGORIES_FOR_DROPDOWN = [
 
 export function StatementUploadPage() {
   const { categories, addExpense } = useExpenses()
-  const { ruleMap, addRule } = useCategoryRules()
+  const { ruleMap, addRule, saveColumnMapping, loadColumnMapping } = useCategoryRules()
   const [step, setStep] = useState<Step>("upload")
   const [accountType, setAccountType] = useState<"bank" | "credit_card">("bank")
   const [fileName, setFileName] = useState("")
@@ -103,6 +103,7 @@ export function StatementUploadPage() {
   const [savedRulesCount, setSavedRulesCount] = useState(0)
   const [viewMode, setViewMode] = useState<"grouped" | "all">("grouped")
   const [showHidden, setShowHidden] = useState(false)
+  const [flipSign, setFlipSign] = useState(false)
 
   // Sort state for grouped view
   const [groupSort, setGroupSort] = useState<{ field: SortField; dir: SortDir }>({
@@ -131,15 +132,23 @@ export function StatementUploadPage() {
         setHeaders(h)
         setRawRows(rows)
 
-        setProcessingMessage("Detecting columns...")
-        const { mapping: detected } = detectColumns(h)
-        setMapping({
-          date: detected.date ?? "",
-          amount: detected.amount ?? "",
-          description: detected.description ?? "",
-          balance: detected.balance,
-          category: detected.category,
-        })
+        // Try to load a saved mapping for these headers first
+        setProcessingMessage("Loading saved mapping...")
+        const saved = await loadColumnMapping(h)
+
+        if (saved && saved.date && saved.amount && saved.description) {
+          setMapping(saved)
+        } else {
+          setProcessingMessage("Detecting columns...")
+          const { mapping: detected } = detectColumns(h)
+          setMapping({
+            date: detected.date ?? "",
+            amount: detected.amount ?? "",
+            description: detected.description ?? "",
+            balance: detected.balance,
+            category: detected.category,
+          })
+        }
 
         setStep("map")
       } finally {
@@ -172,8 +181,12 @@ export function StatementUploadPage() {
     if (!mapping.date || !mapping.amount || !mapping.description) return
 
     setProcessing(true)
-    setProcessingMessage("Mapping transactions...")
+    setProcessingMessage("Saving column mapping...")
 
+    // Save mapping for future uploads with same headers
+    await saveColumnMapping(headers, mapping)
+
+    setProcessingMessage("Mapping transactions...")
     // Yield to let the overlay render before heavy computation
     await new Promise((r) => setTimeout(r, 50))
 
@@ -185,8 +198,17 @@ export function StatementUploadPage() {
 
       const categorized = categorizeTransactions(mapped, ruleMap)
       setTransactions(categorized)
-      setCategoryOverrides({})
       setRememberRules({})
+
+      // Auto-assign categories only for high-confidence matches (≥ 0.5)
+      // Low-confidence suggestions stay as clickable hints
+      const autoOverrides: Record<number, string> = {}
+      categorized.forEach((txn, i) => {
+        if (txn.suggestedCategory && txn.categoryConfidence >= 0.5) {
+          autoOverrides[i] = txn.suggestedCategory
+        }
+      })
+      setCategoryOverrides(autoOverrides)
 
       setProcessingMessage("Detecting internal transfers...")
       const autoHidden = new Set<number>()
@@ -210,9 +232,10 @@ export function StatementUploadPage() {
     transactions.forEach((txn, i) => {
       const pattern = normalizeDescription(txn.description)
       const existing = groups.get(pattern)
+      const a = amt(txn)
       if (existing) {
         existing.indices.push(i)
-        existing.totalAmount += txn.amount
+        existing.totalAmount += a
         // hidden if ALL indices are hidden
         existing.hidden = existing.hidden && hiddenIndices.has(i)
       } else {
@@ -220,21 +243,21 @@ export function StatementUploadPage() {
           pattern,
           exampleDescription: txn.description,
           indices: [i],
-          suggestedCategory: txn.suggestedCategory ?? "other",
+          suggestedCategory: txn.suggestedCategory ?? "",
           confidence: txn.categoryConfidence,
-          totalAmount: txn.amount,
-          isInflow: txn.amount > 0,
+          totalAmount: a,
+          isInflow: a > 0,
           hidden: hiddenIndices.has(i),
         })
       }
     })
     // Finalize isInflow based on majority
     for (const group of groups.values()) {
-      const positiveCount = group.indices.filter((i) => transactions[i].amount > 0).length
+      const positiveCount = group.indices.filter((i) => amt(transactions[i]) > 0).length
       group.isInflow = positiveCount > group.indices.length / 2
     }
     return Array.from(groups.values())
-  }, [transactions, hiddenIndices])
+  }, [transactions, hiddenIndices, flipSign])
 
   // ── Sorted groups ───────────────────────────────────────────────────────
 
@@ -276,10 +299,10 @@ export function StatementUploadPage() {
         case "description":
           return dir * a.txn.description.localeCompare(b.txn.description)
         case "amount":
-          return dir * (Math.abs(a.txn.amount) - Math.abs(b.txn.amount))
+          return dir * (Math.abs(amt(a.txn)) - Math.abs(amt(b.txn)))
         case "category": {
-          const catA = categoryOverrides[a.i] ?? a.txn.suggestedCategory ?? "other"
-          const catB = categoryOverrides[b.i] ?? b.txn.suggestedCategory ?? "other"
+          const catA = categoryOverrides[a.i] ?? ""
+          const catB = categoryOverrides[b.i] ?? ""
           return dir * catA.localeCompare(catB)
         }
         case "confidence":
@@ -307,6 +330,21 @@ export function StatementUploadPage() {
       if (categoryOverrides[idx]) return categoryOverrides[idx]
     }
     return group.suggestedCategory
+  }
+
+  /**
+   * Convert numeric confidence into a human-readable status.
+   * 1.0 = learned rule, 0.9 = from CSV column, 0.8 = keyword match, anything else = needs review.
+   */
+  function confidenceLabel(confidence: number): {
+    text: string
+    variant: "default" | "secondary" | "outline" | "destructive"
+  } {
+    if (confidence >= 1.0) return { text: "Learned", variant: "default" }
+    if (confidence >= 0.85) return { text: "From CSV", variant: "outline" }
+    if (confidence >= 0.5) return { text: "Matched", variant: "default" }
+    if (confidence > 0) return { text: "Guess", variant: "secondary" }
+    return { text: "No match", variant: "destructive" }
   }
 
   /** Toggle hide for all transactions in a group. */
@@ -364,15 +402,22 @@ export function StatementUploadPage() {
 
 
 
+  /** Get the effective amount for a transaction, respecting the flip toggle. */
+  const amt = (txn: ParsedTransaction) => (flipSign ? -txn.amount : txn.amount)
+
   // ── Stats ───────────────────────────────────────────────────────────────
 
   const visibleCount = transactions.length - hiddenIndices.size
+  const categorizedCount = transactions.filter(
+    (_, i) => !hiddenIndices.has(i) && categoryOverrides[i]
+  ).length
+  const uncategorizedCount = visibleCount - categorizedCount
   const inflowTotal = transactions
-    .filter((_, i) => !hiddenIndices.has(i) && transactions[i].amount > 0)
-    .reduce((s, t) => s + t.amount, 0)
+    .filter((_, i) => !hiddenIndices.has(i) && amt(transactions[i]) > 0)
+    .reduce((s, t) => s + amt(t), 0)
   const outflowTotal = transactions
-    .filter((_, i) => !hiddenIndices.has(i) && transactions[i].amount < 0)
-    .reduce((s, t) => s + Math.abs(t.amount), 0)
+    .filter((_, i) => !hiddenIndices.has(i) && amt(transactions[i]) < 0)
+    .reduce((s, t) => s + Math.abs(amt(t)), 0)
 
   // ── Import ──────────────────────────────────────────────────────────────
 
@@ -407,34 +452,22 @@ export function StatementUploadPage() {
       if (hiddenIndices.has(i)) continue
 
       const txn = transactions[i]
-      const catKey = categoryOverrides[i] ?? txn.suggestedCategory ?? "other"
+      const effectiveAmount = amt(txn)
+      const catKey = categoryOverrides[i] ?? ""
+      if (!catKey) continue // skip uncategorized transactions
       const isIncome = INCOME_CATEGORY_KEYS.includes(catKey) || catKey === "other_income"
 
-      if (isIncome) {
-        const cat = categories.find(
-          (c) => c.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").includes(catKey)
-        )
-        await addExpense({
-          categoryId: cat?.id ?? categories[categories.length - 1]?.id ?? "",
-          amount: -Math.abs(txn.amount),
-          date: txn.date,
-          description: txn.description,
-          isRecurring: false,
-          source: "csv_import",
-        })
-      } else {
-        const cat = categories.find(
-          (c) => c.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").includes(catKey)
-        )
-        await addExpense({
-          categoryId: cat?.id ?? categories[categories.length - 1]?.id ?? "",
-          amount: Math.abs(txn.amount),
-          date: txn.date,
-          description: txn.description,
-          isRecurring: false,
-          source: "csv_import",
-        })
-      }
+      const cat = categories.find(
+        (c) => c.name.toLowerCase().replace(/[^a-z0-9]+/g, "_").includes(catKey)
+      )
+      await addExpense({
+        categoryId: cat?.id ?? categories[categories.length - 1]?.id ?? "",
+        amount: isIncome ? -Math.abs(effectiveAmount) : Math.abs(effectiveAmount),
+        date: txn.date,
+        description: txn.description,
+        isRecurring: false,
+        source: "csv_import",
+      })
       count++
 
       // Update progress every 5 transactions to avoid excessive re-renders
@@ -685,6 +718,15 @@ export function StatementUploadPage() {
                 <ArrowUp className="h-3 w-3 text-green-500" />
                 Inflow: {formatCHF(inflowTotal)}
               </Badge>
+              <Button
+                variant={flipSign ? "default" : "outline"}
+                size="sm"
+                className="gap-1 text-xs"
+                onClick={() => setFlipSign(!flipSign)}
+              >
+                <ArrowUpDown className="h-3 w-3" />
+                {flipSign ? "Signs flipped" : "Flip in/out"}
+              </Button>
               {hiddenIndices.size > 0 && (
                 <Badge variant="secondary" className="gap-1">
                   <EyeOff className="h-3 w-3" />
@@ -692,8 +734,13 @@ export function StatementUploadPage() {
                 </Badge>
               )}
               <span className="text-muted-foreground">
-                {visibleCount} to import
+                {categorizedCount} categorized
               </span>
+              {uncategorizedCount > 0 && (
+                <Badge variant="destructive" className="gap-1 text-xs">
+                  {uncategorizedCount} uncategorized
+                </Badge>
+              )}
             </div>
 
             {/* Controls */}
@@ -774,11 +821,12 @@ export function StatementUploadPage() {
                           dir={groupSort.dir}
                         />
                       </TableHead>
+                      <TableHead>Suggestion</TableHead>
                       <TableHead
                         className="cursor-pointer select-none"
                         onClick={() => toggleGroupSort("confidence")}
                       >
-                        Confidence
+                        Status
                         <SortIcon
                           active={groupSort.field === "confidence"}
                           dir={groupSort.dir}
@@ -794,6 +842,8 @@ export function StatementUploadPage() {
                   <TableBody>
                     {sortedGroups.map((group) => {
                       const effectiveCat = getGroupCategory(group)
+                      const hasSuggestion =
+                        !effectiveCat && group.suggestedCategory
                       const isLearned = ruleMap.has(group.pattern)
                       return (
                         <TableRow
@@ -851,8 +901,10 @@ export function StatementUploadPage() {
                               value={effectiveCat}
                               onValueChange={(v) => massCategorize(group, v)}
                             >
-                              <SelectTrigger className="h-7 text-xs">
-                                <SelectValue />
+                              <SelectTrigger
+                                className={`h-7 text-xs ${!effectiveCat ? "text-muted-foreground italic" : ""}`}
+                              >
+                                <SelectValue placeholder="— select —" />
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectItem
@@ -888,20 +940,32 @@ export function StatementUploadPage() {
                             </Select>
                           </TableCell>
                           <TableCell>
-                            <Badge
-                              variant={
-                                isLearned
-                                  ? "default"
-                                  : group.confidence > 0.5
-                                    ? "default"
-                                    : "secondary"
-                              }
-                              className="text-xs"
-                            >
-                              {isLearned
-                                ? "Learned"
-                                : `${Math.round(group.confidence * 100)}%`}
-                            </Badge>
+                            {hasSuggestion ? (
+                              <button
+                                type="button"
+                                className="inline-flex items-center rounded border border-dashed border-muted-foreground/40 px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                                onClick={() =>
+                                  massCategorize(group, group.suggestedCategory)
+                                }
+                                title="Click to accept this suggestion"
+                              >
+                                {group.suggestedCategory}
+                              </button>
+                            ) : effectiveCat ? (
+                              <span className="text-xs text-muted-foreground/40">—</span>
+                            ) : null}
+                          </TableCell>
+                          <TableCell>
+                            {(() => {
+                              const label = isLearned
+                                ? { text: "Learned", variant: "default" as const }
+                                : confidenceLabel(group.confidence)
+                              return (
+                                <Badge variant={label.variant} className="text-xs">
+                                  {label.text}
+                                </Badge>
+                              )
+                            })()}
                           </TableCell>
                           <TableCell className="text-center">
                             {isLearned ? (
@@ -970,11 +1034,12 @@ export function StatementUploadPage() {
                           dir={flatSort.dir}
                         />
                       </TableHead>
+                      <TableHead>Suggestion</TableHead>
                       <TableHead
                         className="cursor-pointer select-none"
                         onClick={() => toggleFlatSort("confidence")}
                       >
-                        Confidence
+                        Status
                         <SortIcon
                           active={flatSort.field === "confidence"}
                           dir={flatSort.dir}
@@ -983,7 +1048,13 @@ export function StatementUploadPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {sortedTransactions.map(({ txn, i }) => (
+                    {sortedTransactions.map(({ txn, i }) => {
+                      const flatCat = categoryOverrides[i] ?? ""
+                      const flatSuggestion =
+                        !flatCat && txn.suggestedCategory
+                          ? txn.suggestedCategory
+                          : ""
+                      return (
                       <TableRow
                         key={i}
                         className={hiddenIndices.has(i) ? "opacity-40" : undefined}
@@ -1008,31 +1079,31 @@ export function StatementUploadPage() {
                           {txn.description}
                         </TableCell>
                         <TableCell className="text-right text-xs font-medium">
-                          {formatCHF(Math.abs(txn.amount))}
+                          {formatCHF(Math.abs(amt(txn)))}
                         </TableCell>
                         <TableCell>
                           <Badge
                             variant="outline"
                             className={
-                              txn.amount > 0
+                              amt(txn) > 0
                                 ? "border-green-300 text-green-700 text-xs"
                                 : "border-red-300 text-red-700 text-xs"
                             }
                           >
-                            {txn.amount > 0 ? "In" : "Out"}
+                            {amt(txn) > 0 ? "In" : "Out"}
                           </Badge>
                         </TableCell>
                         <TableCell>
                           <Select
-                            value={
-                              categoryOverrides[i] ?? txn.suggestedCategory ?? "other"
-                            }
+                            value={flatCat}
                             onValueChange={(v) =>
                               setCategoryOverrides({ ...categoryOverrides, [i]: v })
                             }
                           >
-                            <SelectTrigger className="h-7 text-xs">
-                              <SelectValue />
+                            <SelectTrigger
+                              className={`h-7 text-xs ${!flatCat ? "text-muted-foreground italic" : ""}`}
+                            >
+                              <SelectValue placeholder="— select —" />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem
@@ -1068,17 +1139,37 @@ export function StatementUploadPage() {
                           </Select>
                         </TableCell>
                         <TableCell>
-                          <Badge
-                            variant={
-                              txn.categoryConfidence > 0.5 ? "default" : "secondary"
-                            }
-                            className="text-xs"
-                          >
-                            {Math.round(txn.categoryConfidence * 100)}%
-                          </Badge>
+                          {flatSuggestion ? (
+                            <button
+                              type="button"
+                              className="inline-flex items-center rounded border border-dashed border-muted-foreground/40 px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                              onClick={() =>
+                                setCategoryOverrides({
+                                  ...categoryOverrides,
+                                  [i]: flatSuggestion,
+                                })
+                              }
+                              title="Click to accept this suggestion"
+                            >
+                              {flatSuggestion}
+                            </button>
+                          ) : flatCat ? (
+                            <span className="text-xs text-muted-foreground/40">—</span>
+                          ) : null}
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const label = confidenceLabel(txn.categoryConfidence)
+                            return (
+                              <Badge variant={label.variant} className="text-xs">
+                                {label.text}
+                              </Badge>
+                            )
+                          })()}
                         </TableCell>
                       </TableRow>
-                    ))}
+                    )
+                    })}
                   </TableBody>
                 </Table>
               </div>
@@ -1099,7 +1190,7 @@ export function StatementUploadPage() {
               <Button onClick={handleImport} disabled={importing}>
                 {importing
                   ? "Importing..."
-                  : `Import ${visibleCount} Transactions`}
+                  : `Import ${categorizedCount} Transactions${uncategorizedCount > 0 ? ` (${uncategorizedCount} skipped)` : ""}`}
               </Button>
             </div>
           </CardContent>

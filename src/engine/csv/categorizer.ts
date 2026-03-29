@@ -274,12 +274,8 @@ export function categorizeTransaction(
     }
   }
 
-  // 4. For inflows that didn't match anything, default to generic income
-  if (amount !== undefined && amount > 0) {
-    return { category: "other_income", confidence: 0.2 }
-  }
-
-  return { category: "other", confidence: 0.2 }
+  // 4. No match — return empty so the user must decide
+  return { category: "", confidence: 0 }
 }
 
 /**
