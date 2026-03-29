@@ -87,7 +87,7 @@ export function ExpensesPage() {
         age = now.getFullYear() - born.getFullYear()
         if (now < new Date(now.getFullYear(), born.getMonth(), born.getDate())) age--
       }
-      return { annualGross: Number(inc.annualGross || 0), age, bvgMonthlyOverride: inc.bvgMonthly }
+      return { annualGross: Number(inc.annualGross || 0), age, bvgEmployeeSplit: inc.bvgEmployeeSplit ?? undefined, bvgMonthlyOverride: inc.bvgMonthly }
     })
     return calculateTotalSocialDeductions(records)
   }, [currentIncomes, family?.adults])

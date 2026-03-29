@@ -31,7 +31,7 @@ import {
 } from "recharts"
 import { useIncome } from "@/hooks/useIncome"
 import { useFamily } from "@/hooks/useFamily"
-import { calculateTotalSocialDeductions } from "@/engine/social/swiss-social-deductions"
+import { calculateSocialDeductions, calculateTotalSocialDeductions } from "@/engine/social/swiss-social-deductions"
 import { calculateTaxSimple } from "@/engine/tax/tax-engine"
 import { formatCHF, formatDate, formatPercent } from "@/lib/formatters"
 import type { IncomeType, BonusFrequency } from "@/types"
@@ -64,6 +64,7 @@ export function IncomePage() {
   const [bonus, setBonus] = useState(0)
   const [bonusFrequency, setBonusFrequency] = useState<BonusFrequency>("annual")
   const [bonusPayoutMonths, setBonusPayoutMonths] = useState<number[]>([12])
+  const [bvgEmployeeSplit, setBvgEmployeeSplit] = useState<number | null>(null)
   const [bvgMonthly, setBvgMonthly] = useState<number | null>(null)
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
@@ -78,6 +79,7 @@ export function IncomePage() {
     setBonus(0)
     setBonusFrequency("annual")
     setBonusPayoutMonths([12])
+    setBvgEmployeeSplit(null)
     setBvgMonthly(null)
     setStartDate("")
     setEndDate("")
@@ -95,6 +97,7 @@ export function IncomePage() {
     setBonus(Number(inc.bonus ?? 0))
     setBonusFrequency(inc.bonusFrequency ?? "annual")
     setBonusPayoutMonths(inc.bonusPayoutMonths ?? getDefaultPayoutMonths(inc.bonusFrequency ?? "annual"))
+    setBvgEmployeeSplit(inc.bvgEmployeeSplit ?? null)
     setBvgMonthly(inc.bvgMonthly ?? null)
     setStartDate(inc.startDate ?? "")
     setEndDate(inc.endDate ?? "")
@@ -125,6 +128,7 @@ export function IncomePage() {
         bonus,
         bonusFrequency: bonus > 0 ? bonusFrequency : ("none" as BonusFrequency),
         bonusPayoutMonths: bonus > 0 ? bonusPayoutMonths : [],
+        bvgEmployeeSplit: bvgEmployeeSplit ?? null,
         bvgMonthly: bvgMonthly ?? null,
         startDate: startDate || new Date().toISOString().split("T")[0],
         endDate: endDate || null,
@@ -141,27 +145,43 @@ export function IncomePage() {
     }
   }
 
-  // Social deductions & tax breakdown
+  // Per-income social deductions (for columnar payslip)
   const now = new Date()
-  const socialDeductions = (() => {
-    const records = incomes
-      .filter((i) => {
-        if (i.isProjection) return false
-        if (!i.endDate) return true
-        return i.endDate >= now.toISOString().split("T")[0]
-      })
-      .map((inc) => {
-        const member = family?.adults.find((a) => a.id === inc.memberId)
-        let age = 35
-        if (member?.dateOfBirth) {
-          const born = new Date(member.dateOfBirth)
-          age = now.getFullYear() - born.getFullYear()
-          if (now < new Date(now.getFullYear(), born.getMonth(), born.getDate())) age--
-        }
-        return { annualGross: Number(inc.annualGross || 0), age, bvgMonthlyOverride: inc.bvgMonthly }
-      })
-    return calculateTotalSocialDeductions(records)
-  })()
+  const activeIncomes = incomes.filter((i) => {
+    if (i.isProjection) return false
+    if (!i.endDate) return true
+    return i.endDate >= now.toISOString().split("T")[0]
+  })
+
+  const perIncomeBreakdowns = activeIncomes.map((inc) => {
+    const member = family?.adults.find((a) => a.id === inc.memberId)
+    let age = 35
+    if (member?.dateOfBirth) {
+      const born = new Date(member.dateOfBirth)
+      age = now.getFullYear() - born.getFullYear()
+      if (now < new Date(now.getFullYear(), born.getMonth(), born.getDate())) age--
+    }
+    const social = calculateSocialDeductions({
+      annualGross: Number(inc.annualGross || 0),
+      age,
+      bvgEmployeeSplit: inc.bvgEmployeeSplit ?? undefined,
+      bvgMonthlyOverride: inc.bvgMonthly,
+    })
+    return { income: inc, social, memberName: member?.name ?? "Unknown" }
+  })
+
+  const socialDeductions = calculateTotalSocialDeductions(
+    activeIncomes.map((inc) => {
+      const member = family?.adults.find((a) => a.id === inc.memberId)
+      let age = 35
+      if (member?.dateOfBirth) {
+        const born = new Date(member.dateOfBirth)
+        age = now.getFullYear() - born.getFullYear()
+        if (now < new Date(now.getFullYear(), born.getMonth(), born.getDate())) age--
+      }
+      return { annualGross: Number(inc.annualGross || 0), age, bvgEmployeeSplit: inc.bvgEmployeeSplit ?? undefined, bvgMonthlyOverride: inc.bvgMonthly }
+    })
+  )
 
   const numChildren = family?.children?.filter((c) => !c.isPlanned).length ?? 0
   const numAdults = family?.adults?.length ?? 2
@@ -173,6 +193,8 @@ export function IncomePage() {
   })
   const annualNet = totalAnnualGross - socialDeductions.total - taxResult.total
   const monthlyNet = Math.round(annualNet / 12)
+
+  const hasMultipleIncomes = activeIncomes.length > 1
 
   // Chart data — split base vs bonus
   const chartData = (() => {
@@ -317,17 +339,33 @@ export function IncomePage() {
                   </div>
                 </>
               )}
-              <div className="space-y-2">
-                <Label>BVG Employee Contribution (CHF/month)</Label>
-                <Input
-                  type="number"
-                  value={bvgMonthly ?? ""}
-                  onChange={(e) => setBvgMonthly(e.target.value ? Number(e.target.value) : null)}
-                  placeholder="Leave empty to auto-calculate from age"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Your monthly employee share from your payslip. If left empty, the legal minimum is estimated based on age.
-                </p>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>BVG Employee Split (%)</Label>
+                  <Input
+                    type="number"
+                    value={bvgEmployeeSplit ?? ""}
+                    onChange={(e) => setBvgEmployeeSplit(e.target.value ? Number(e.target.value) : null)}
+                    placeholder="50"
+                    min={0}
+                    max={100}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Employee share of total BVG contribution. Default 50%.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label>BVG Employee Amount (CHF/mo)</Label>
+                  <Input
+                    type="number"
+                    value={bvgMonthly ?? ""}
+                    onChange={(e) => setBvgMonthly(e.target.value ? Number(e.target.value) : null)}
+                    placeholder="Auto from age & split"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Override with exact amount from payslip.
+                  </p>
+                </div>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
@@ -410,72 +448,173 @@ export function IncomePage() {
         </Card>
       </div>
 
-      {/* Payslip deductions breakdown */}
+      {/* Payslip deductions breakdown — columnar */}
       {totalAnnualGross > 0 && (
         <Card>
           <CardHeader>
             <CardTitle>Monthly Payslip Breakdown</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">Gross Salary</span>
-                <span className="font-semibold">{formatCHF(totalMonthlyGross)}</span>
-              </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b text-left">
+                    <th className="pb-2 font-medium"></th>
+                    {perIncomeBreakdowns.map(({ income }) => (
+                      <th key={income.id} className="pb-2 font-medium text-right pl-4">
+                        {income.employer || "Income"}
+                      </th>
+                    ))}
+                    {hasMultipleIncomes && (
+                      <th className="pb-2 font-semibold text-right pl-4 border-l">Total</th>
+                    )}
+                  </tr>
+                </thead>
+                <tbody>
+                  {/* Gross */}
+                  <tr className="border-b">
+                    <td className="py-1.5 font-medium">Gross Salary</td>
+                    {perIncomeBreakdowns.map(({ income }) => (
+                      <td key={income.id} className="py-1.5 text-right pl-4 font-semibold">
+                        {formatCHF(Math.round(Number(income.annualGross || 0) / 12))}
+                      </td>
+                    ))}
+                    {hasMultipleIncomes && (
+                      <td className="py-1.5 text-right pl-4 font-semibold border-l">{formatCHF(totalMonthlyGross)}</td>
+                    )}
+                  </tr>
 
-              <div className="border-t pt-2 space-y-1.5">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Social Deductions (Employee Share)</p>
-                {[
-                  { label: "AHV / IV / EO", value: socialDeductions.ahvIvEo, rate: socialDeductions.rates.ahvIvEo },
-                  { label: "ALV (Unemployment)", value: socialDeductions.alv, rate: socialDeductions.rates.alv },
-                  ...(socialDeductions.alvSolidarity > 0
-                    ? [{ label: "ALV Solidarity", value: socialDeductions.alvSolidarity, rate: socialDeductions.rates.alvSolidarity }]
-                    : []),
-                  { label: "BVG (Pension 2nd Pillar)", value: socialDeductions.bvg, rate: socialDeductions.rates.bvg },
-                  { label: "NBU (Accident Insurance)", value: socialDeductions.nbu, rate: socialDeductions.rates.nbu },
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      {item.label}{" "}
-                      <span className="text-xs">({formatPercent(item.rate)})</span>
-                    </span>
-                    <span className="text-red-600">-{formatCHF(Math.round(item.value / 12))}</span>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between text-sm font-medium border-t pt-1.5">
-                  <span>Total Social Deductions</span>
-                  <span className="text-red-600">-{formatCHF(Math.round(socialDeductions.total / 12))}</span>
-                </div>
-              </div>
+                  {/* Social deductions header */}
+                  <tr>
+                    <td colSpan={perIncomeBreakdowns.length + (hasMultipleIncomes ? 2 : 1)} className="pt-3 pb-1">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Social Deductions (Employee Share)</span>
+                    </td>
+                  </tr>
 
-              <div className="border-t pt-2 space-y-1.5">
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tax</p>
-                {[
-                  { label: "Federal Tax", value: taxResult.federal },
-                  { label: "Cantonal Tax", value: taxResult.cantonal },
-                  { label: "Municipal Tax", value: taxResult.municipal },
-                  ...(taxResult.church > 0 ? [{ label: "Church Tax", value: taxResult.church }] : []),
-                ].map((item) => (
-                  <div key={item.label} className="flex items-center justify-between text-sm">
-                    <span className="text-muted-foreground">{item.label}</span>
-                    <span className="text-red-600">-{formatCHF(Math.round(item.value / 12))}</span>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between text-sm font-medium border-t pt-1.5">
-                  <span>Total Tax</span>
-                  <span className="text-red-600">-{formatCHF(taxResult.monthlyTax)}</span>
-                </div>
-              </div>
+                  {/* Social deduction rows */}
+                  {[
+                    { label: "AHV / IV / EO", key: "ahvIvEo" as const },
+                    { label: "ALV (Unemployment)", key: "alv" as const },
+                    ...(socialDeductions.alvSolidarity > 0
+                      ? [{ label: "ALV Solidarity", key: "alvSolidarity" as const }]
+                      : []),
+                    { label: "BVG (Pension 2nd Pillar)", key: "bvg" as const },
+                    { label: "NBU (Accident Ins.)", key: "nbu" as const },
+                  ].map((row) => (
+                    <tr key={row.key} className="border-b border-dashed">
+                      <td className="py-1 text-muted-foreground">{row.label}</td>
+                      {perIncomeBreakdowns.map(({ income, social }) => (
+                        <td key={income.id} className="py-1 text-right pl-4 text-red-600">
+                          -{formatCHF(Math.round(social[row.key] / 12))}
+                        </td>
+                      ))}
+                      {hasMultipleIncomes && (
+                        <td className="py-1 text-right pl-4 text-red-600 border-l">
+                          -{formatCHF(Math.round(socialDeductions[row.key] / 12))}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
 
-              <div className="border-t-2 pt-3 flex items-center justify-between">
-                <span className="font-semibold text-lg">Monthly Net Income</span>
-                <span className="font-bold text-lg text-green-600">{formatCHF(monthlyNet)}</span>
-              </div>
-              <p className="text-xs text-muted-foreground">
-                Effective deduction rate: {formatPercent(totalAnnualGross > 0 ? (socialDeductions.total + taxResult.total) / totalAnnualGross : 0)}
-                {" "}(social {formatPercent(socialDeductions.rates.effective)} + tax {formatPercent(taxResult.effectiveRate)})
-              </p>
+                  {/* Social total */}
+                  <tr className="border-b">
+                    <td className="py-1.5 font-medium">Total Social</td>
+                    {perIncomeBreakdowns.map(({ income, social }) => (
+                      <td key={income.id} className="py-1.5 text-right pl-4 text-red-600 font-medium">
+                        -{formatCHF(Math.round(social.total / 12))}
+                      </td>
+                    ))}
+                    {hasMultipleIncomes && (
+                      <td className="py-1.5 text-right pl-4 text-red-600 font-medium border-l">
+                        -{formatCHF(Math.round(socialDeductions.total / 12))}
+                      </td>
+                    )}
+                  </tr>
+
+                  {/* Tax header */}
+                  <tr>
+                    <td colSpan={perIncomeBreakdowns.length + (hasMultipleIncomes ? 2 : 1)} className="pt-3 pb-1">
+                      <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tax (combined household)</span>
+                    </td>
+                  </tr>
+
+                  {/* Tax rows — only in total column since tax is household-level */}
+                  {[
+                    { label: "Federal Tax", value: taxResult.federal },
+                    { label: "Cantonal Tax", value: taxResult.cantonal },
+                    { label: "Municipal Tax", value: taxResult.municipal },
+                    ...(taxResult.church > 0 ? [{ label: "Church Tax", value: taxResult.church }] : []),
+                  ].map((row) => (
+                    <tr key={row.label} className="border-b border-dashed">
+                      <td className="py-1 text-muted-foreground">{row.label}</td>
+                      {hasMultipleIncomes ? (
+                        <>
+                          {perIncomeBreakdowns.map(({ income }) => (
+                            <td key={income.id} className="py-1 text-right pl-4 text-muted-foreground">—</td>
+                          ))}
+                          <td className="py-1 text-right pl-4 text-red-600 border-l">
+                            -{formatCHF(Math.round(row.value / 12))}
+                          </td>
+                        </>
+                      ) : (
+                        <td className="py-1 text-right pl-4 text-red-600">
+                          -{formatCHF(Math.round(row.value / 12))}
+                        </td>
+                      )}
+                    </tr>
+                  ))}
+
+                  {/* Tax total */}
+                  <tr className="border-b">
+                    <td className="py-1.5 font-medium">Total Tax</td>
+                    {hasMultipleIncomes ? (
+                      <>
+                        {perIncomeBreakdowns.map(({ income }) => (
+                          <td key={income.id} className="py-1.5 text-right pl-4 text-muted-foreground">—</td>
+                        ))}
+                        <td className="py-1.5 text-right pl-4 text-red-600 font-medium border-l">
+                          -{formatCHF(taxResult.monthlyTax)}
+                        </td>
+                      </>
+                    ) : (
+                      <td className="py-1.5 text-right pl-4 text-red-600 font-medium">
+                        -{formatCHF(taxResult.monthlyTax)}
+                      </td>
+                    )}
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr className="border-t-2">
+                    <td className="pt-3 font-semibold text-lg">Net Income</td>
+                    {hasMultipleIncomes ? (
+                      <>
+                        {perIncomeBreakdowns.map(({ income, social }) => {
+                          const gross = Number(income.annualGross || 0)
+                          const perIncomeNet = Math.round((gross - social.total) / 12)
+                          return (
+                            <td key={income.id} className="pt-3 text-right pl-4 font-semibold text-green-600">
+                              {formatCHF(perIncomeNet)}
+                              <span className="block text-xs font-normal text-muted-foreground">before tax</span>
+                            </td>
+                          )
+                        })}
+                        <td className="pt-3 text-right pl-4 font-bold text-lg text-green-600 border-l">
+                          {formatCHF(monthlyNet)}
+                        </td>
+                      </>
+                    ) : (
+                      <td className="pt-3 text-right pl-4 font-bold text-lg text-green-600">
+                        {formatCHF(monthlyNet)}
+                      </td>
+                    )}
+                  </tr>
+                </tfoot>
+              </table>
             </div>
+            <p className="mt-3 text-xs text-muted-foreground">
+              Effective deduction rate: {formatPercent(totalAnnualGross > 0 ? (socialDeductions.total + taxResult.total) / totalAnnualGross : 0)}
+              {" "}(social {formatPercent(socialDeductions.rates.effective)} + tax {formatPercent(taxResult.effectiveRate)})
+            </p>
           </CardContent>
         </Card>
       )}
