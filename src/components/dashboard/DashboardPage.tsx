@@ -24,6 +24,7 @@ import { useAssets } from "@/hooks/useAssets"
 import { useFamily } from "@/hooks/useFamily"
 import { calculateTaxSimple } from "@/engine/tax/tax-engine"
 import { calculateNetWorth } from "@/engine/net-worth/net-worth-calculator"
+import { calculateTotalSocialDeductions } from "@/engine/social/swiss-social-deductions"
 import { useUIStore } from "@/store"
 import { formatCHF, formatPercent, formatAxisCHF } from "@/lib/formatters"
 
@@ -41,21 +42,47 @@ export function DashboardPage() {
   const numAdults = family?.adults?.length ?? 2
   const filingStatus = numAdults >= 2 ? ("married" as const) : ("single" as const)
 
+  // Social deductions (AHV/IV/EO, ALV, BVG, NBU)
+  const socialDeductions = useMemo(() => {
+    const now = new Date()
+    const records = (incomes ?? [])
+      .filter((i) => {
+        if (i.isProjection) return false
+        if (!i.endDate) return true
+        return i.endDate >= now.toISOString().split("T")[0]
+      })
+      .map((inc) => {
+        const member = family?.adults.find((a) => a.id === inc.memberId)
+        let age = 35 // sensible default
+        if (member?.dateOfBirth) {
+          const born = new Date(member.dateOfBirth)
+          age = now.getFullYear() - born.getFullYear()
+          if (now < new Date(now.getFullYear(), born.getMonth(), born.getDate())) age--
+        }
+        return { annualGross: Number(inc.annualGross || 0), age, bvgMonthlyOverride: inc.bvgMonthly }
+      })
+    return calculateTotalSocialDeductions(records)
+  }, [incomes, family?.adults])
+
+  // Tax is computed on gross AFTER social deductions (they reduce taxable income)
+  const taxableGross = totalAnnualGross - socialDeductions.total
+
   const taxResult = useMemo(
     () =>
-      calculateTaxSimple(totalAnnualGross, filingStatus, numChildren, {
+      calculateTaxSimple(Math.max(0, taxableGross), filingStatus, numChildren, {
         municipality: family?.municipality ?? "Zürich",
         churchTax: family?.churchTax ?? false,
       }),
-    [totalAnnualGross, filingStatus, numChildren, family?.municipality, family?.churchTax]
+    [taxableGross, filingStatus, numChildren, family?.municipality, family?.churchTax]
   )
 
-  const monthlyNetIncomeFull = Math.round((totalAnnualGross - taxResult.total) / 12)
+  const totalAnnualDeductions = socialDeductions.total + taxResult.total
+  const monthlyNetIncomeFull = Math.round((totalAnnualGross - totalAnnualDeductions) / 12)
   const netWorth = useMemo(() => calculateNetWorth(assets), [assets])
   const cashBalance = netWorth.breakdown.liquid
-  const taxRatio = totalAnnualGross > 0 ? taxResult.total / totalAnnualGross : 0
-  const monthlyNetBase = Math.round((totalAnnualBase * (1 - taxRatio)) / 12)
-  const monthlyNetBonus = Math.round((totalAnnualBonus * (1 - taxRatio)) / 12)
+  const deductionRatio = totalAnnualGross > 0 ? totalAnnualDeductions / totalAnnualGross : 0
+  const monthlyNetBase = Math.round((totalAnnualBase * (1 - deductionRatio)) / 12)
+  const monthlyNetBonus = Math.round((totalAnnualBonus * (1 - deductionRatio)) / 12)
 
   // Toggle: include bonus or base-only (conservative)
   const monthlyNetIncome = includeBonus ? monthlyNetIncomeFull : monthlyNetBase
@@ -115,8 +142,8 @@ export function DashboardPage() {
       const tl = incomeTimeline[i]
       if (!tl) break
 
-      const netBase = Math.round(tl.baseIncome * (1 - taxRatio))
-      const netBonus = Math.round(tl.bonusIncome * (1 - taxRatio))
+      const netBase = Math.round(tl.baseIncome * (1 - deductionRatio))
+      const netBonus = Math.round(tl.bonusIncome * (1 - deductionRatio))
       const cashFlow = netBase + netBonus - effectiveMonthlyExpenses
 
       runningCash += cashFlow
@@ -133,7 +160,21 @@ export function DashboardPage() {
       })
     }
     return data
-  }, [incomeTimeline, taxRatio, effectiveMonthlyExpenses, cashBalance, netWorth.netWorth, assets])
+  }, [incomeTimeline, deductionRatio, effectiveMonthlyExpenses, cashBalance, netWorth.netWorth, assets])
+
+  // All categories sorted by amount (for the full breakdown chart)
+  const allCategoriesBySize = categories
+    .map((cat) => {
+      const actual = expenses
+        .filter((e) => e.categoryId === cat.id && e.date.substring(0, 7) === currentYM)
+        .reduce((s, e) => s + e.amount, 0)
+      const value = hasTransactions ? actual : Number(cat.monthlyBudget ?? 0)
+      return { name: cat.name, value, color: cat.color }
+    })
+    .filter((d) => d.value > 0)
+    .sort((a, b) => b.value - a.value)
+
+  const maxCategoryValue = allCategoriesBySize.length > 0 ? allCategoriesBySize[0].value : 0
 
   const hasData = incomes.length > 0 || expenses.length > 0 || assets.length > 0
 
@@ -436,6 +477,48 @@ export function DashboardPage() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* All expenses by category – horizontal bars */}
+      {hasData && allCategoriesBySize.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>
+              {hasTransactions ? "All Spending by Category" : "All Budgets by Category"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {allCategoriesBySize.map((cat) => {
+                const pct = maxCategoryValue > 0 ? (cat.value / maxCategoryValue) * 100 : 0
+                const share =
+                  effectiveMonthlyExpenses > 0
+                    ? ((cat.value / effectiveMonthlyExpenses) * 100).toFixed(1)
+                    : "0"
+                return (
+                  <div key={cat.name}>
+                    <div className="flex items-center justify-between text-sm mb-0.5">
+                      <span className="truncate font-medium">{cat.name}</span>
+                      <span className="ml-2 shrink-0 tabular-nums text-muted-foreground">
+                        {formatCHF(cat.value)}{" "}
+                        <span className="text-xs">({share}%)</span>
+                      </span>
+                    </div>
+                    <div className="h-5 w-full rounded bg-muted overflow-hidden">
+                      <div
+                        className="h-full rounded transition-all"
+                        style={{
+                          width: `${pct}%`,
+                          backgroundColor: cat.color,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </CardContent>
+        </Card>
       )}
     </div>
   )

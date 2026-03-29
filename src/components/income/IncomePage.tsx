@@ -31,7 +31,9 @@ import {
 } from "recharts"
 import { useIncome } from "@/hooks/useIncome"
 import { useFamily } from "@/hooks/useFamily"
-import { formatCHF, formatDate } from "@/lib/formatters"
+import { calculateTotalSocialDeductions } from "@/engine/social/swiss-social-deductions"
+import { calculateTaxSimple } from "@/engine/tax/tax-engine"
+import { formatCHF, formatDate, formatPercent } from "@/lib/formatters"
 import type { IncomeType, BonusFrequency } from "@/types"
 
 const MONTH_LABELS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
@@ -62,6 +64,7 @@ export function IncomePage() {
   const [bonus, setBonus] = useState(0)
   const [bonusFrequency, setBonusFrequency] = useState<BonusFrequency>("annual")
   const [bonusPayoutMonths, setBonusPayoutMonths] = useState<number[]>([12])
+  const [bvgMonthly, setBvgMonthly] = useState<number | null>(null)
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
 
@@ -75,6 +78,7 @@ export function IncomePage() {
     setBonus(0)
     setBonusFrequency("annual")
     setBonusPayoutMonths([12])
+    setBvgMonthly(null)
     setStartDate("")
     setEndDate("")
   }
@@ -91,6 +95,7 @@ export function IncomePage() {
     setBonus(Number(inc.bonus ?? 0))
     setBonusFrequency(inc.bonusFrequency ?? "annual")
     setBonusPayoutMonths(inc.bonusPayoutMonths ?? getDefaultPayoutMonths(inc.bonusFrequency ?? "annual"))
+    setBvgMonthly(inc.bvgMonthly ?? null)
     setStartDate(inc.startDate ?? "")
     setEndDate(inc.endDate ?? "")
     setDialogOpen(true)
@@ -120,6 +125,7 @@ export function IncomePage() {
         bonus,
         bonusFrequency: bonus > 0 ? bonusFrequency : ("none" as BonusFrequency),
         bonusPayoutMonths: bonus > 0 ? bonusPayoutMonths : [],
+        bvgMonthly: bvgMonthly ?? null,
         startDate: startDate || new Date().toISOString().split("T")[0],
         endDate: endDate || null,
       }
@@ -134,6 +140,39 @@ export function IncomePage() {
       console.error("Failed to save income:", err)
     }
   }
+
+  // Social deductions & tax breakdown
+  const now = new Date()
+  const socialDeductions = (() => {
+    const records = incomes
+      .filter((i) => {
+        if (i.isProjection) return false
+        if (!i.endDate) return true
+        return i.endDate >= now.toISOString().split("T")[0]
+      })
+      .map((inc) => {
+        const member = family?.adults.find((a) => a.id === inc.memberId)
+        let age = 35
+        if (member?.dateOfBirth) {
+          const born = new Date(member.dateOfBirth)
+          age = now.getFullYear() - born.getFullYear()
+          if (now < new Date(now.getFullYear(), born.getMonth(), born.getDate())) age--
+        }
+        return { annualGross: Number(inc.annualGross || 0), age, bvgMonthlyOverride: inc.bvgMonthly }
+      })
+    return calculateTotalSocialDeductions(records)
+  })()
+
+  const numChildren = family?.children?.filter((c) => !c.isPlanned).length ?? 0
+  const numAdults = family?.adults?.length ?? 2
+  const filingStatus = numAdults >= 2 ? ("married" as const) : ("single" as const)
+  const taxableGross = Math.max(0, totalAnnualGross - socialDeductions.total)
+  const taxResult = calculateTaxSimple(taxableGross, filingStatus, numChildren, {
+    municipality: family?.municipality ?? "Zürich",
+    churchTax: family?.churchTax ?? false,
+  })
+  const annualNet = totalAnnualGross - socialDeductions.total - taxResult.total
+  const monthlyNet = Math.round(annualNet / 12)
 
   // Chart data — split base vs bonus
   const chartData = (() => {
@@ -278,6 +317,18 @@ export function IncomePage() {
                   </div>
                 </>
               )}
+              <div className="space-y-2">
+                <Label>BVG Employee Contribution (CHF/month)</Label>
+                <Input
+                  type="number"
+                  value={bvgMonthly ?? ""}
+                  onChange={(e) => setBvgMonthly(e.target.value ? Number(e.target.value) : null)}
+                  placeholder="Leave empty to auto-calculate from age"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Your monthly employee share from your payslip. If left empty, the legal minimum is estimated based on age.
+                </p>
+              </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Start Date</Label>
@@ -358,6 +409,76 @@ export function IncomePage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Payslip deductions breakdown */}
+      {totalAnnualGross > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Monthly Payslip Breakdown</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="font-medium">Gross Salary</span>
+                <span className="font-semibold">{formatCHF(totalMonthlyGross)}</span>
+              </div>
+
+              <div className="border-t pt-2 space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Social Deductions (Employee Share)</p>
+                {[
+                  { label: "AHV / IV / EO", value: socialDeductions.ahvIvEo, rate: socialDeductions.rates.ahvIvEo },
+                  { label: "ALV (Unemployment)", value: socialDeductions.alv, rate: socialDeductions.rates.alv },
+                  ...(socialDeductions.alvSolidarity > 0
+                    ? [{ label: "ALV Solidarity", value: socialDeductions.alvSolidarity, rate: socialDeductions.rates.alvSolidarity }]
+                    : []),
+                  { label: "BVG (Pension 2nd Pillar)", value: socialDeductions.bvg, rate: socialDeductions.rates.bvg },
+                  { label: "NBU (Accident Insurance)", value: socialDeductions.nbu, rate: socialDeductions.rates.nbu },
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">
+                      {item.label}{" "}
+                      <span className="text-xs">({formatPercent(item.rate)})</span>
+                    </span>
+                    <span className="text-red-600">-{formatCHF(Math.round(item.value / 12))}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between text-sm font-medium border-t pt-1.5">
+                  <span>Total Social Deductions</span>
+                  <span className="text-red-600">-{formatCHF(Math.round(socialDeductions.total / 12))}</span>
+                </div>
+              </div>
+
+              <div className="border-t pt-2 space-y-1.5">
+                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Tax</p>
+                {[
+                  { label: "Federal Tax", value: taxResult.federal },
+                  { label: "Cantonal Tax", value: taxResult.cantonal },
+                  { label: "Municipal Tax", value: taxResult.municipal },
+                  ...(taxResult.church > 0 ? [{ label: "Church Tax", value: taxResult.church }] : []),
+                ].map((item) => (
+                  <div key={item.label} className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{item.label}</span>
+                    <span className="text-red-600">-{formatCHF(Math.round(item.value / 12))}</span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between text-sm font-medium border-t pt-1.5">
+                  <span>Total Tax</span>
+                  <span className="text-red-600">-{formatCHF(taxResult.monthlyTax)}</span>
+                </div>
+              </div>
+
+              <div className="border-t-2 pt-3 flex items-center justify-between">
+                <span className="font-semibold text-lg">Monthly Net Income</span>
+                <span className="font-bold text-lg text-green-600">{formatCHF(monthlyNet)}</span>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Effective deduction rate: {formatPercent(totalAnnualGross > 0 ? (socialDeductions.total + taxResult.total) / totalAnnualGross : 0)}
+                {" "}(social {formatPercent(socialDeductions.rates.effective)} + tax {formatPercent(taxResult.effectiveRate)})
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Chart */}
       {chartData.length > 0 && (

@@ -37,6 +37,7 @@ import { useExpenses } from "@/hooks/useExpenses"
 import { useIncome } from "@/hooks/useIncome"
 import { useFamily } from "@/hooks/useFamily"
 import { calculateTaxSimple } from "@/engine/tax/tax-engine"
+import { calculateTotalSocialDeductions } from "@/engine/social/swiss-social-deductions"
 import { useUIStore } from "@/store"
 import { formatCHF, formatAxisCHF } from "@/lib/formatters"
 import { DEFAULT_EXPENSE_CATEGORIES } from "@/lib/constants"
@@ -45,13 +46,13 @@ const GROUPS = [
   { label: "Fixed Costs", keys: ["housing", "health_insurance", "childcare", "taxes"] },
   { label: "Daily Living", keys: ["groceries", "household", "personal_expenses", "communication", "transport", "car"] },
   { label: "Lifestyle", keys: ["restaurants", "holidays", "leisure", "personal_care", "clothing", "gifts"] },
-  { label: "Savings & Investments", keys: ["pension_3a", "bvg", "investments", "other"] },
+  { label: "Savings & Investments", keys: ["pension_3a", "bvg", "investments", "kids_investment", "other"] },
 ]
 
 export function ExpensesPage() {
   const { expenses, categories, loading, addExpense, deleteExpense, updateCategoryBudget } =
     useExpenses()
-  const { totalAnnualGross, totalAnnualBase } = useIncome()
+  const { totalAnnualGross, totalAnnualBase, currentIncomes } = useIncome()
   const { includeBonus, toggleIncludeBonus } = useUIStore()
   const { family } = useFamily()
 
@@ -60,7 +61,7 @@ export function ExpensesPage() {
   const period = viewMode === "yearly" ? "year" : "month"
 
   const [dialogOpen, setDialogOpen] = useState(false)
-  const [expCategoryId, setExpCategoryId] = useState("")
+  const [expGroup, setExpGroup] = useState("")
   const [expAmount, setExpAmount] = useState(0)
   const [expDate, setExpDate] = useState(new Date().toISOString().split("T")[0])
   const [expDescription, setExpDescription] = useState("")
@@ -70,14 +71,32 @@ export function ExpensesPage() {
   const filingStatus = numAdults >= 2 ? "married" as const : "single" as const
 
   const grossForCalc = includeBonus ? totalAnnualGross : totalAnnualBase
+
+  const socialDeductions = useMemo(() => {
+    const now = new Date()
+    const records = currentIncomes.map((inc) => {
+      const member = family?.adults.find((a) => a.id === inc.memberId)
+      let age = 35
+      if (member?.dateOfBirth) {
+        const born = new Date(member.dateOfBirth)
+        age = now.getFullYear() - born.getFullYear()
+        if (now < new Date(now.getFullYear(), born.getMonth(), born.getDate())) age--
+      }
+      return { annualGross: Number(inc.annualGross || 0), age, bvgMonthlyOverride: inc.bvgMonthly }
+    })
+    return calculateTotalSocialDeductions(records)
+  }, [currentIncomes, family?.adults])
+
+  const socialRatio = totalAnnualGross > 0 ? socialDeductions.total / totalAnnualGross : 0
+  const grossAfterSocial = Math.max(0, grossForCalc - grossForCalc * socialRatio)
   const taxForCalc = useMemo(
-    () => calculateTaxSimple(grossForCalc, filingStatus, numChildren, {
+    () => calculateTaxSimple(grossAfterSocial, filingStatus, numChildren, {
       municipality: family?.municipality ?? "Zürich",
       churchTax: family?.churchTax ?? false,
     }),
-    [grossForCalc, filingStatus, numChildren, family?.municipality, family?.churchTax]
+    [grossAfterSocial, filingStatus, numChildren, family?.municipality, family?.churchTax]
   )
-  const monthlyNetIncome = Math.round((grossForCalc - taxForCalc.total) / 12)
+  const monthlyNetIncome = Math.round((grossForCalc - grossForCalc * socialRatio - taxForCalc.total) / 12)
 
   // Monthly tax for display (informational, not counted in expenses)
   const monthlyTax = taxForCalc.monthlyTax
@@ -170,11 +189,23 @@ export function ExpensesPage() {
     return { rows, totalBudget: totalBudgetCalib, totalActual: totalActualCalib, variance, variancePct, mostOver, mostUnder, monthCount }
   }, [expenses, categories])
 
+  // Resolve group selection to a category ID (first category in the group)
+  const groupToCategoryId = (groupLabel: string): string | null => {
+    const group = GROUPS.find((g) => g.label === groupLabel)
+    if (!group) return null
+    for (const key of group.keys) {
+      const cat = findCatByKey(key)
+      if (cat) return cat.id
+    }
+    return null
+  }
+
   const handleAddExpense = async () => {
-    if (!expCategoryId || !expAmount) return
+    const categoryId = groupToCategoryId(expGroup)
+    if (!categoryId || !expAmount) return
     try {
       await addExpense({
-        categoryId: expCategoryId,
+        categoryId,
         amount: expAmount,
         date: expDate,
         description: expDescription,
@@ -182,6 +213,7 @@ export function ExpensesPage() {
         source: "manual",
       })
       setDialogOpen(false)
+      setExpGroup("")
       setExpAmount(0)
       setExpDescription("")
     } catch (err) {
@@ -232,13 +264,13 @@ export function ExpensesPage() {
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Category</Label>
-                <Select value={expCategoryId || undefined} onValueChange={setExpCategoryId}>
+                <Select value={expGroup || undefined} onValueChange={setExpGroup}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select category" />
                   </SelectTrigger>
                   <SelectContent>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    {GROUPS.map((g) => (
+                      <SelectItem key={g.label} value={g.label}>{g.label}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>

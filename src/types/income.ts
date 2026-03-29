@@ -15,6 +15,7 @@ export interface IncomeRecord {
   bonus?: number
   bonusFrequency?: BonusFrequency
   bonusPayoutMonths?: number[] // 1-12 (Jan=1, Dec=12)
+  bvgMonthly?: number | null // custom BVG employee contribution per month (overrides default calc)
   startDate: string
   endDate?: string | null
   isProjection: boolean

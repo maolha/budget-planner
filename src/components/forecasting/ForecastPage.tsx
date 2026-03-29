@@ -41,6 +41,7 @@ import { useFamily } from "@/hooks/useFamily"
 import { useScenarios } from "@/hooks/useScenarios"
 import { calculateTaxSimple } from "@/engine/tax/tax-engine"
 import { calculateNetWorth } from "@/engine/net-worth/net-worth-calculator"
+import { calculateTotalSocialDeductions } from "@/engine/social/swiss-social-deductions"
 import type { LifeEvent, LifeEventType } from "@/types"
 import { v4 as uuid } from "uuid"
 
@@ -65,20 +66,38 @@ export function ForecastPage() {
 
   const netWorth = useMemo(() => calculateNetWorth(assets), [assets])
 
-  // Tax calculation for net income
+  // Social deductions + tax calculation for net income
   const numChildren = family?.children?.filter((c) => !c.isPlanned).length ?? 0
   const numAdults = family?.adults?.length ?? 2
   const filingStatus = numAdults >= 2 ? ("married" as const) : ("single" as const)
+
+  const socialDeductions = useMemo(() => {
+    const now = new Date()
+    const records = currentIncomes.map((inc) => {
+      const member = family?.adults.find((a) => a.id === inc.memberId)
+      let age = 35
+      if (member?.dateOfBirth) {
+        const born = new Date(member.dateOfBirth)
+        age = now.getFullYear() - born.getFullYear()
+        if (now < new Date(now.getFullYear(), born.getMonth(), born.getDate())) age--
+      }
+      return { annualGross: Number(inc.annualGross || 0), age, bvgMonthlyOverride: inc.bvgMonthly }
+    })
+    return calculateTotalSocialDeductions(records)
+  }, [currentIncomes, family?.adults])
+
+  const taxableGross = Math.max(0, totalAnnualGross - socialDeductions.total)
   const taxResult = useMemo(
-    () => calculateTaxSimple(totalAnnualGross, filingStatus, numChildren, {
+    () => calculateTaxSimple(taxableGross, filingStatus, numChildren, {
       municipality: family?.municipality ?? "Zürich",
       churchTax: family?.churchTax ?? false,
     }),
-    [totalAnnualGross, filingStatus, numChildren, family?.municipality, family?.churchTax]
+    [taxableGross, filingStatus, numChildren, family?.municipality, family?.churchTax]
   )
 
-  const taxRatio = totalAnnualGross > 0 ? taxResult.total / totalAnnualGross : 0
-  const monthlyNetIncome = Math.round((totalAnnualGross - taxResult.total) / 12)
+  const totalDeductions = socialDeductions.total + taxResult.total
+  const taxRatio = totalAnnualGross > 0 ? totalDeductions / totalAnnualGross : 0
+  const monthlyNetIncome = Math.round((totalAnnualGross - totalDeductions) / 12)
   const effectiveExpenses = totalMonthlyBudget > 0 ? totalMonthlyBudget : totalMonthlyExpenses
 
   // Investment return estimate from asset data

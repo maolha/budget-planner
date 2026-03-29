@@ -24,6 +24,7 @@ export type DefaultCategoryKey =
   | "pension_3a"
   | "bvg"
   | "investments"
+  | "kids_investment"
   | "other"
 
 export interface DefaultCategoryDef {
@@ -56,7 +57,8 @@ export const DEFAULT_EXPENSE_CATEGORIES: DefaultCategoryDef[] = [
   { key: "clothing", name: "Clothing & Shoes", icon: "Shirt", color: "#8b5cf6", isFixed: false, sortOrder: 17, typicalMonthly: 300 },
   { key: "gifts", name: "Gifts", icon: "Gift", color: "#a855f7", isFixed: false, sortOrder: 18, typicalMonthly: 500 },
   { key: "investments", name: "Investments & Crypto", icon: "TrendingUp", color: "#10b981", isFixed: false, sortOrder: 19 },
-  { key: "other", name: "Other", icon: "MoreHorizontal", color: "#94a3b8", isFixed: false, sortOrder: 20 },
+  { key: "kids_investment", name: "Kids Investment", icon: "GraduationCap", color: "#f59e0b", isFixed: false, sortOrder: 20 },
+  { key: "other", name: "Other", icon: "MoreHorizontal", color: "#94a3b8", isFixed: false, sortOrder: 21 },
 ]
 
 export const ASSET_TYPES = [
